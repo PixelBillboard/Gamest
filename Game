@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Строитель</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+        body {
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            touch-action: none;
+            font-family: 'Courier New', monospace;
+        }
+        .game-wrapper {
+            background: #16213e;
+            padding: 10px;
+            border-radius: 16px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.7);
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #0f3460;
+            border-radius: 8px;
+            image-rendering: pixelated;
+            width: 100%;
+            height: auto;
+            max-width: 400px;
+            touch-action: none;
+        }
+        .ui {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 4px 0;
+            color: #e0e0e0;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .ui span { background: #0a0a1a; padding: 4px 12px; border-radius: 20px; }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            gap: 8px;
+        }
+        .ctrl-btn {
+            background: #2a2a4a;
+            border: none;
+            color: white;
+            font-size: 28px;
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
+            box-shadow: 0 4px 0 #0a0a1a;
+            touch-action: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.05s linear;
+        }
+        .ctrl-btn:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+        .ctrl-btn.jump {
+            background: #e94560;
+            width: 80px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .ctrl-btn.reward {
+            background: #f5a623;
+            width: auto;
+            padding: 0 16px;
+            font-size: 14px;
+            border-radius: 30px;
+        }
+        @media (max-width: 450px) {
+            .ctrl-btn { width: 50px; height: 50px; font-size: 24px; }
+            .ctrl-btn.jump { width: 70px; font-size: 16px; }
+        }
+        .hidden { display: none !important; }
+        .game-over-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            color: white;
+            pointer-events: none;
+        }
+        .game-over-overlay.active {
+            pointer-events: auto;
+        }
+        .game-over-overlay h1 {
+            font-size: 36px;
+            text-shadow: 0 0 20px #e94560;
+            margin-bottom: 10px;
+        }
+        .game-over-overlay p {
+            font-size: 20px;
+            margin: 4px 0;
+        }
+        .game-over-overlay button {
+            margin-top: 20px;
+            padding: 12px 40px;
+            background: #e94560;
+            border: none;
+            border-radius: 30px;
+            color: white;
+            font-size: 22px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #a02040;
+            transition: 0.05s linear;
+        }
+        .game-over-overlay button:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+        .game-container {
+            position: relative;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+<div class="game-wrapper">
+    <div class="game-container">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div id="gameOverlay" class="game-over-overlay hidden">
+            <h1>💀 ПРОИГРЫШ</h1>
+            <p>Счёт: <span id="finalScore">0</span></p>
+            <p>Рекорд: <span id="finalRecord">0</span></p>
+            <button id="restartBtn">ИГРАТЬ СНОВА</button>
+        </div>
+    </div>
+    <div class="ui">
+        <span>🏆 <span id="scoreDisplay">0</span></span>
+        <span>⭐ Рекорд: <span id="recordDisplay">0</span></span>
+    </div>
+    <div class="controls">
+        <button class="ctrl-btn" id="leftBtn">◀</button>
+        <button class="ctrl-btn jump" id="jumpBtn">ПРЫГ</button>
+        <button class="ctrl-btn" id="rightBtn">▶</button>
+        <button class="ctrl-btn reward" id="rewardBtn">🎁 БОНУС</button>
+    </div>
+</div>
+
+<script src="https://yandex.ru/games/sdk/v2/sdk.js"></script>
+<script>
+// ============================================================
+// 1. ИНИЦИАЛИЗАЦИЯ ИГРЫ (без ожидания SDK)
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = 400, H = 600;
+const CELL = 30;
+
+// DOM-элементы
+const scoreSpan = document.getElementById('scoreDisplay');
+const recordSpan = document.getElementById('recordDisplay');
+const finalScoreSpan = document.getElementById('finalScore');
+const finalRecordSpan = document.getElementById('finalRecord');
+const overlay = document.getElementById('gameOverlay');
+const restartBtn = document.getElementById('restartBtn');
+
+let game = null;
+let ysdk = null;
+let record = parseInt(localStorage.getItem('builderRecord')) || 0;
+recordSpan.textContent = record;
+
+// ============================================================
+// 2. КЛАСС ИГРЫ (полностью рабочий)
+// ============================================================
+class Game {
+    constructor() {
+        this.player = {
+            x: W/2 - 12, y: H - 60 - 34,
+            w: 24, h: 34,
+            vx: 0, vy: 0,
+            onGround: true,
+            facing: 1,
+            frame: 0,
+        };
+        this.cubes = [];
+        this.staticCubes = [];
+        this.grabs = [];
+        this.score = 0;
+        this.gameOver = false;
+        this.time = 0;
+        this.grabSpeed = 1.2;
+        this.dropInterval = 60;
+        this.grabCount = 1;
+        this.nextGrabAdd = 15;
+        this.timer = 0;
+        this.keys = { left: false, right: false };
+        this.initGrabs();
+    }
+
+    initGrabs() {
+        this.grabs = [];
+        for (let i = 0; i < this.grabCount; i++) {
+            const spacing = W / (this.grabCount + 1);
+            this.grabs.push({
+                x: spacing * (i + 1) - 15,
+                y: 20,
+                w: 30,
+                h: 20,
+                speed: this.grabSpeed,
+                dir: 1,
+                cooldown: 60 + Math.random() * 120,
+                timer: 0,
+            });
+        }
+    }
+
+    reset() {
+        this.player.x = W/2 - 12;
+        this.player.y = H - 60 - 34;
+        this.player.vx = 0;
+        this.player.vy = 0;
+        this.player.onGround = true;
+        this.cubes = [];
+        this.staticCubes = [];
+        this.score = 0;
+        this.gameOver = false;
+        this.time = 0;
+        this.grabSpeed = 1.2;
+        this.dropInterval = 60;
+        this.grabCount = 1;
+        this.nextGrabAdd = 15;
+        this.timer = 0;
+        this.initGrabs();
+        overlay.classList.add('hidden');
+        updateUI();
+    }
+
+    keyDown(key) {
+        if (key === 'left') this.keys.left = true;
+        if (key === 'right') this.keys.right = true;
+        if (key === 'jump') {
+            if (this.player.onGround && !this.gameOver) {
+                this.player.vy = -7.5;
+                this.player.onGround = false;
+            }
+        }
+    }
+    keyUp(key) {
+        if (key === 'left') this.keys.left = false;
+        if (key === 'right') this.keys.right = false;
+    }
+
+    update() {
+        if (this.gameOver) return;
+        this.time += 1/60;
+        this.timer++;
+
+        // Управление
+        const accel = 0.6, maxSpeed = 4;
+        if (this.keys.left) {
+            this.player.vx -= accel;
+            this.player.facing = -1;
+            if (this.player.vx < -maxSpeed) this.player.vx = -maxSpeed;
+        } else if (this.keys.right) {
+            this.player.vx += accel;
+            this.player.facing = 1;
+            if (this.player.vx > maxSpeed) this.player.vx = maxSpeed;
+        } else {
+            this.player.vx *= 0.85;
+            if (Math.abs(this.player.vx) < 0.1) this.player.vx = 0;
+        }
+        if (Math.abs(this.player.vx) > 0.5) this.player.frame += 0.15;
+        else this.player.frame = 0;
+
+        // Гравитация
+        this.player.vy += 0.45;
+        if (this.player.vy > 8) this.player.vy = 8;
+
+        this.player.x += this.player.vx;
+        this.player.y += this.player.vy;
+        if (this.player.x < 0) this.player.x = 0;
+        if (this.player.x + this.player.w > W) this.player.x = W - this.player.w;
+        if (this.player.y + this.player.h >= H - 10) {
+            this.player.y = H - 10 - this.player.h;
+            this.player.vy = 0;
+            this.player.onGround = true;
+        } else {
+            this.player.onGround = false;
+        }
+
+        // Хваталки
+        for (let g of this.grabs) {
+            g.x += g.speed * g.dir;
+            if (g.x < 0 || g.x + g.w > W) g.dir *= -1;
+            g.timer++;
+            if (g.timer >= g.cooldown) {
+                g.timer = 0;
+                g.cooldown = Math.max(20, this.dropInterval + Math.random() * 60);
+                this.cubes.push({
+                    x: g.x + g.w/2 - 12,
+                    y: g.y + g.h,
+                    w: 24,
+                    h: 24,
+                    vy: 1.2,
+                });
+            }
+        }
+
+        // Падение кубиков
+        for (let i = this.cubes.length-1; i >= 0; i--) {
+            const c = this.cubes[i];
+            c.y += c.vy;
+            c.vy += 0.08;
+            if (c.vy > 4) c.vy = 4;
+
+            // Столкновение с игроком
+            if (!this.gameOver && this.checkCollision(this.player, c)) {
+                if (this.player.vy < 0 && this.player.y + this.player.h - c.y < 10) {
+                    this.cubes.splice(i, 1);
+                    this.score += 1;
+                    updateUI();
+                    continue;
+                } else {
+                    this.gameOver = true;
+                    this.showGameOver();
+                    return;
+                }
+            }
+
+            // Приземление
+            let landed = false;
+            // На пол
+            if (c.y + c.h >= H - 10) {
+                this.staticCubes.push({ x: c.x, y: H - 10 - c.h, w: c.w, h: c.h });
+                this.cubes.splice(i, 1);
+                this.checkLines();
+                landed = true;
+                continue;
+            }
+            // На другие кубики
+            for (let s of this.staticCubes) {
+                if (c.x < s.x + s.w && c.x + c.w > s.x &&
+                    c.y + c.h >= s.y && c.y + c.h <= s.y + 8) {
+                    this.staticCubes.push({ x: c.x, y: s.y - c.h, w: c.w, h: c.h });
+                    this.cubes.splice(i, 1);
+                    this.checkLines();
+                    landed = true;
+                    break;
+                }
+            }
+            if (landed) continue;
+        }
+
+        // Сложность
+        if (this.time > this.nextGrabAdd && this.grabCount < 4) {
+            this.grabCount++;
+            this.nextGrabAdd += 15 + Math.random() * 10;
+            this.grabSpeed += 0.3;
+            this.dropInterval = Math.max(20, this.dropInterval - 5);
+            this.initGrabs();
+        }
+        if (this.time % 5 < 0.02) {
+            this.grabSpeed += 0.05;
+            for (let g of this.grabs) g.speed = this.grabSpeed;
+        }
+        updateUI();
+    }
+
+    checkCollision(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x &&
+               a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    checkLines() {
+        const rows = {};
+        for (let s of this.staticCubes) {
+            const key = Math.round(s.y);
+            if (!rows[key]) rows[key] = [];
+            rows[key].push(s);
+        }
+        let linesCleared = 0;
+        for (let y in rows) {
+            const cubes = rows[y];
+            const coverage = new Array(W).fill(false);
+            for (let c of cubes) {
+                for (let x = c.x; x < c.x + c.w; x++) {
+                    if (x >= 0 && x < W) coverage[x] = true;
+                }
+            }
+            let full = true;
+            for (let x = 0; x < W; x++) {
+                if (!coverage[x]) { full = false; break; }
+            }
+            if (full) {
+                this.staticCubes = this.staticCubes.filter(s => Math.round(s.y) !== parseInt(y));
+                linesCleared++;
+                for (let s of this.staticCubes) {
+                    if (s.y < parseInt(y)) s.y += 30;
+                }
+            }
+        }
+        if (linesCleared > 0) {
+            this.score += linesCleared * 10;
+            updateUI();
+        }
+    }
+
+    draw() {
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = '#0f3460';
+        ctx.fillRect(0, 0, W, H);
+
+        // Статика
+        ctx.fillStyle = '#e0a060';
+        ctx.shadowColor = '#00000033';
+        ctx.shadowBlur = 4;
+        for (let s of this.staticCubes) {
+            ctx.fillRect(s.x, s.y, s.w-1, s.h-1);
+            ctx.fillStyle = '#c08040';
+            ctx.fillRect(s.x+2, s.y+2, s.w-5, s.h-5);
+            ctx.fillStyle = '#e0a060';
+        }
+        ctx.shadowBlur = 0;
+
+        // Падающие
+        ctx.fillStyle = '#ff6b6b';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#ff6b6b66';
+        for (let c of this.cubes) {
+            ctx.fillRect(c.x, c.y, c.w, c.h);
+            ctx.fillStyle = '#ff3b3b';
+            ctx.fillRect(c.x+3, c.y+3, c.w-6, c.h-6);
+            ctx.fillStyle = '#ff6b6b';
+        }
+        ctx.shadowBlur = 0;
+
+        // Хваталки
+        for (let g of this.grabs) {
+            ctx.fillStyle = '#888';
+            ctx.fillRect(g.x, g.y, g.w, g.h);
+            ctx.fillStyle = '#aaa';
+            ctx.fillRect(g.x+2, g.y+2, g.w-4, g.h-4);
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(g.x + g.w/2, 0);
+            ctx.lineTo(g.x + g.w/2, g.y);
+            ctx.stroke();
+            ctx.fillStyle = '#555';
+            ctx.fillRect(g.x + g.w/2 - 3, g.y + g.h-2, 6, 4);
+        }
+
+        this.drawPlayer();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 14px "Courier New"';
+        ctx.fillText('Время: ' + Math.floor(this.time) + 'с', 10, 25);
+    }
+
+    drawPlayer() {
+        const p = this.player;
+        const x = p.x, y = p.y, f = p.facing;
+        ctx.fillStyle = '#3a6ea5';
+        ctx.fillRect(x+2, y+12, 20, 18);
+        ctx.fillStyle = '#f5d0b0';
+        ctx.fillRect(x+4, y+2, 16, 14);
+        ctx.fillStyle = '#c0392b';
+        ctx.fillRect(x+2, y-2, 20, 6);
+        ctx.fillRect(x+6, y-6, 12, 4);
+        ctx.fillStyle = '#a93226';
+        if (f === 1) ctx.fillRect(x+18, y-2, 6, 3);
+        else ctx.fillRect(x, y-2, 6, 3);
+        ctx.fillStyle = '#000';
+        if (f === 1) {
+            ctx.fillRect(x+12, y+4, 3, 3);
+            ctx.fillRect(x+18, y+4, 3, 3);
+        } else {
+            ctx.fillRect(x+4, y+4, 3, 3);
+            ctx.fillRect(x+10, y+4, 3, 3);
+        }
+        ctx.fillStyle = '#f5d0b0';
+        const armOff = Math.sin(p.frame) * 3;
+        if (f === 1) {
+            ctx.fillRect(x+20, y+12 + armOff, 4, 8);
+            ctx.fillRect(x-2, y+12 - armOff, 4, 8);
+        } else {
+            ctx.fillRect(x-2, y+12 + armOff, 4, 8);
+            ctx.fillRect(x+20, y+12 - armOff, 4, 8);
+        }
+        ctx.fillStyle = '#2c3e50';
+        const legOff = Math.sin(p.frame + 1) * 3;
+        ctx.fillRect(x+4, y+28 + legOff, 6, 6);
+        ctx.fillRect(x+14, y+28 - legOff, 6, 6);
+        ctx.fillStyle = '#5d4037';
+        ctx.fillRect(x+2, y+32 + legOff, 8, 4);
+        ctx.fillRect(x+14, y+32 - legOff, 8, 4);
+    }
+
+    showGameOver() {
+        finalScoreSpan.textContent = this.score;
+        if (this.score > record) {
+            record = this.score;
+            localStorage.setItem('builderRecord', record);
+            if (ysdk) {
+                ysdk.leaderboard.setScore('builder', record).catch(e => console.warn('LB error', e));
+            }
+        }
+        finalRecordSpan.textContent = record;
+        recordSpan.textContent = record;
+        overlay.classList.remove('hidden');
+    }
+}
+
+// ============================================================
+// 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================
+function updateUI() {
+    if (game) {
+        scoreSpan.textContent = game.score;
+        recordSpan.textContent = record;
+    }
+}
+
+// ============================================================
+// 4. УПРАВЛЕНИЕ (клавиатура + сенсор)
+// ============================================================
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); if (game) game.keyDown('left'); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); if (game) game.keyDown('right'); }
+    if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); if (game) game.keyDown('jump'); }
+});
+document.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); if (game) game.keyUp('left'); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); if (game) game.keyUp('right'); }
+});
+
+['leftBtn','rightBtn','jumpBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    const key = id.replace('Btn','');
+    el.addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown(key); });
+    el.addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp(key); });
+    el.addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown(key); });
+    el.addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp(key); });
+});
+// Кнопка прыжка – отдельно для удержания
+document.getElementById('jumpBtn').addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown('jump'); });
+document.getElementById('jumpBtn').addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp('jump'); });
+document.getElementById('jumpBtn').addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown('jump'); });
+document.getElementById('jumpBtn').addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp('jump'); });
+
+restartBtn.addEventListener('click', () => { if (game) game.reset(); });
+
+// ============================================================
+// 5. БОНУСНАЯ РЕКЛАМА
+// ============================================================
+document.getElementById('rewardBtn').addEventListener('click', () => {
+    if (!ysdk) {
+        alert('SDK пока не загружен, но +5 очков зачислено!');
+        if (game && !game.gameOver) { game.score += 5; updateUI(); }
+        return;
+    }
+    ysdk.adv.showRewarded({
+        callbacks: {
+            onRewarded: () => {
+                if (game && !game.gameOver) {
+                    game.score += 5;
+                    updateUI();
+                    alert('🎉 +5 очков!');
+                }
+            },
+            onClose: () => console.log('Реклама закрыта')
+        }
+    }).catch(e => console.warn('Реклама не показана', e));
+});
+
+// ============================================================
+// 6. ЗАПУСК ИГРЫ (сразу, без ожидания SDK)
+// ============================================================
+function startGame() {
+    game = new Game();
+    game.reset();
+    function gameLoop() {
+        try {
+            game.update();
+            game.draw();
+        } catch (e) {
+            console.error('Ошибка в игровом цикле:', e);
+        }
+        requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
+}
+
+startGame();
+
+// ============================================================
+// 7. ПОДКЛЮЧЕНИЕ YANDEX SDK (параллельно)
+// ============================================================
+YaGames.init()
+    .then(sdk => {
+        ysdk = sdk;
+        console.log('✅ Яндекс SDK готов');
+        return ysdk.leaderboard.getLeaderboardEntries('builder', { quantityTop: 1 });
+    })
+    .then(data => {
+        if (data && data.length > 0) {
+            record = data[0].score;
+        } else {
+            record = parseInt(localStorage.getItem('builderRecord')) || 0;
+        }
+        recordSpan.textContent = record;
+        if (game) game.record = record; // не используется, но для порядка
+    })
+    .catch(err => {
+        console.warn('⚠️ SDK работает в офлайне:', err);
+        record = parseInt(localStorage.getItem('builderRecord')) || 0;
+        recordSpan.textContent = record;
+    });
+</script>
+</body>
+</html>
