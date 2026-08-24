@@ -545,15 +545,17 @@ menuRecordSpan.textContent = record;
 class Game {
     constructor() {
         // --- Сетка: коробки всегда стоят строго в фиксированных слотах ---
-        this.cubeSize = 40;
-        this.COLS = Math.floor(W / this.cubeSize);      // 10 колонок
-        this.MAX_ROWS = 12;                              // макс. высота стопки в колонке
+        // Размер коробки ≈ половина роста строителя (rост персонажа 34px), больше дорожек, чем раньше.
+        const playerH = 34;
+        this.cubeSize = 25;                               // было 40 — теперь ≈ половина роста строителя
+        this.COLS = Math.round(W / this.cubeSize);        // было 10 → теперь 16 дорожек
+        this.MAX_ROWS = 19;                                // высота стопки скорректирована под новый размер коробки
         this.floorY = H - 20;
         this.columns = [];                                // columns[c] = [ {col,row,x,y,visualX,visualY,w,h}, ... ] снизу вверх
         for (let c = 0; c < this.COLS; c++) this.columns.push([]);
 
         this.player = {
-            x: W/2 - 12, y: this.floorY - 34, w: 24, h: 34,
+            x: W/2 - 12, y: this.floorY - playerH, w: 24, h: playerH,
             vx: 0, vy: 0, onGround: true, facing: 1, frame: 0,
         };
         this.cubes = [];        // падающие (ещё не в сетке)
@@ -781,9 +783,8 @@ class Game {
                 g.hasBlock = true;
                 g.dropAtX = this.randomDropX(newDir);
             }
-        }
-
-        // 3. Падение кубиков (x зафиксирован по колонке — наложений быть не может)
+           }
+   // 3. Падение кубиков (x зафиксирован по колонке — наложений быть не может)
         for (let i = this.cubes.length - 1; i >= 0; i--) {
             const c = this.cubes[i];
             c.y += c.vy;
@@ -808,8 +809,7 @@ class Game {
                 }
             }
 
-
-// Поверхность посадки: верх стопки в этой колонке, либо другой ещё летящий кубик ниже него
+            // Поверхность посадки: верх стопки в этой колонке, либо другой ещё летящий кубик ниже него
             let surfaceY = this.rowY(this.columns[c.col].length) + this.cubeSize; // = floorY - height*cubeSize
             for (let other of this.cubes) {
                 if (other !== c && other.col === c.col && other.y > c.y) {
@@ -975,18 +975,43 @@ class Game {
             ctx.fillStyle = '#555';
             ctx.fillRect(g.x + g.w/2 - 3, g.y + g.h - 2, 6, 4);
 
-            // блок, который кран пока несёт (исчезает после сброса)
+            // Блок, который кран пока несёт: размер = реальному размеру коробки (bug fix — раньше был другой размер).
+            // Два механических щупа-держателя слева и справа обхватывают блок по контуру,
+            // а перед сбросом слегка раздвигаются, отпуская его.
             if (g.hasBlock) {
-                const bs = 16;
+                const bs = this.cubeSize;
                 const bx = g.x + g.w/2 - bs/2, by = g.y + g.h + 2;
+
+                // насколько щупы раскрыты: 0 = плотно держат, 1 = полностью разжаты (у точки сброса)
+                let gripOpen = 0;
+                if (!g.dropped) {
+                    const anticipation = 22;
+                    const dist = Math.abs(g.x - g.dropAtX);
+                    if (dist < anticipation) gripOpen = 1 - dist / anticipation;
+                }
+                const armW = 4;
+                const armH = bs * 0.7;
+                const armY = by + bs * 0.1;
+                const gap = 1 + gripOpen * 7; // расстояние между щупом и краем блока
+
+                ctx.fillStyle = '#6b6b6b';
+                // левый щуп (обхватывает левый край блока)
+                ctx.fillRect(bx - gap - armW, armY, armW, armH);
+                // правый щуп (обхватывает правый край блока)
+                ctx.fillRect(bx + bs + gap, armY, armW, armH);
+                // "пальцы" на концах щупов, повторяющие нижний контур блока
+                ctx.fillStyle = '#808080';
+                ctx.fillRect(bx - gap - armW, armY + armH - 4, armW + 4, 4);
+                ctx.fillRect(bx + bs + gap - 4, armY + armH - 4, armW + 4, 4);
+
+                // сам блок
                 ctx.fillStyle = '#e0a060';
                 ctx.fillRect(bx, by, bs, bs);
                 ctx.fillStyle = '#c08040';
-                ctx.fillRect(bx + 2, by + 2, bs - 5, bs - 5);
+                ctx.fillRect(bx + 3, by + 3, bs - 6, bs - 6);
             }
-        }
-
-        // частицы
+    }
+       // частицы
         for (let p of this.particles) {
             ctx.globalAlpha = Math.max(0, p.life / 30);
             ctx.fillStyle = p.color;
@@ -1045,7 +1070,6 @@ class Game {
         gameOverlay.classList.remove('hidden');
     }
 }
-    
 
 // ============================================================
 // 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -1166,7 +1190,7 @@ musicVolume.addEventListener('input', () => {
     audio.setMusicVolume(musicVolume.value / 100);
 });
 
-// ============================================================
+   // ============================================================
 // 6. УПРАВЛЕНИЕ (клавиатура + сенсор/мышь)
 // ============================================================
 document.addEventListener('keydown', (e) => {
@@ -1200,8 +1224,6 @@ function bindHold(el, downFn, upFn) {
 bindHold(document.getElementById('leftBtn'), () => game && game.keyDown('left'), () => game && game.keyUp('left'));
 bindHold(document.getElementById('rightBtn'), () => game && game.keyDown('right'), () => game && game.keyUp('right'));
 bindHold(document.getElementById('jumpBtn'), () => game && game.keyDown('jump'), () => {});
-    
-
 
 // ============================================================
 // 7. ЗАПУСК
@@ -1211,10 +1233,3 @@ gameLoop();
 </script>
 </body>
 </html>
-
-
-
-
-
-
-    
