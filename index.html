@@ -1,250 +1,628 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Строитель</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
-        body {
-            background: #1a1a2e;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            touch-action: none;
-            font-family: 'Courier New', monospace;
-        }
-        .game-wrapper {
-            background: #16213e;
-            padding: 10px;
-            border-radius: 16px;
-            box-shadow: 0 0 30px rgba(0,0,0,0.7);
-            max-width: 420px;
-            width: 100%;
-        }
-        canvas {
-            display: block;
-            width: 100%;
-            height: auto;
-            background: #0f3460;
-            border-radius: 8px;
-            image-rendering: pixelated;
-            touch-action: none;
-        }
-        .ui {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 4px 0;
-            color: #e0e0e0;
-            font-weight: bold;
-            font-size: 14px;
-        }
-        .ui span { background: #0a0a1a; padding: 4px 12px; border-radius: 20px; }
-        .controls {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
-            gap: 8px;
-        }
-        .ctrl-btn {
-            background: #2a2a4a;
-            border: none;
-            color: white;
-            font-size: 28px;
-            width: 60px;
-            height: 60px;
-            border-radius: 16px;
-            box-shadow: 0 4px 0 #0a0a1a;
-            touch-action: none;
-            cursor: pointer;
-            transition: 0.05s linear;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .ctrl-btn:active {
-            transform: translateY(4px);
-            box-shadow: none;
-        }
-        .ctrl-btn.jump {
-            background: #e94560;
-            width: 80px;
-            font-size: 16px;
-            font-weight: bold;
-        }
-        @media (max-width: 450px) {
-            .ctrl-btn { width: 50px; height: 50px; font-size: 24px; }
-            .ctrl-btn.jump { width: 70px; font-size: 14px; }
-        }
-        .hidden { display: none !important; }
-        .game-over-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.75);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-            color: white;
-            pointer-events: none;
-        }
-        .game-over-overlay.active { pointer-events: auto; }
-        .game-over-overlay h1 {
-            font-size: 36px;
-            text-shadow: 0 0 20px #e94560;
-            margin-bottom: 10px;
-        }
-        .game-over-overlay p {
-            font-size: 20px;
-            margin: 4px 0;
-        }
-        .game-over-overlay button {
-            margin-top: 20px;
-            padding: 12px 40px;
-            background: #e94560;
-            border: none;
-            border-radius: 30px;
-            color: white;
-            font-size: 22px;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 4px 0 #a02040;
-            transition: 0.05s linear;
-        }
-        .game-over-overlay button:active {
-            transform: translateY(4px);
-            box-shadow: none;
-        }
-        .game-container {
-            position: relative;
-            display: inline-block;
-            width: 100%;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Строитель — бесконечный забег</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+    html, body {
+        background: #1a1a2e;
+        min-height: 100vh;
+        touch-action: none;
+        font-family: 'Courier New', monospace;
+        overscroll-behavior: none;
+    }
+    body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 10px;
+    }
+    .game-wrapper {
+        position: relative;
+        background: #16213e;
+        padding: 10px;
+        border-radius: 16px;
+        box-shadow: 0 0 30px rgba(0,0,0,0.7);
+        max-width: 420px;
+        width: 100%;
+    }
+    .game-container {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #0f3460;
+        image-rendering: pixelated;
+        touch-action: none;
+    }
+
+    /* ---------- Top UI ---------- */
+    .ui {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 4px 0;
+        color: #e0e0e0;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .ui span.pill { background: #0a0a1a; padding: 4px 12px; border-radius: 20px; }
+    .pause-btn {
+        background: #0a0a1a;
+        border: none;
+        color: #e0e0e0;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    /* ---------- Controls ---------- */
+    .controls {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        gap: 8px;
+    }
+    .ctrl-btn {
+        background: #2a2a4a;
+        border: none;
+        color: white;
+        font-size: 28px;
+        width: 60px;
+        height: 60px;
+        border-radius: 16px;
+        box-shadow: 0 4px 0 #0a0a1a;
+        touch-action: none;
+        cursor: pointer;
+        transition: 0.05s linear;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .ctrl-btn.pressed, .ctrl-btn:active {
+        transform: translateY(4px);
+        box-shadow: none;
+        background: #35355e;
+    }
+    .ctrl-btn.jump {
+        background: #e94560;
+        width: 90px;
+        font-size: 14px;
+        font-weight: bold;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .ctrl-btn.jump.pressed, .ctrl-btn.jump:active { background: #c23650; }
+    .move-pad { display: flex; gap: 8px; }
+    @media (max-width: 380px) {
+        .ctrl-btn { width: 50px; height: 50px; font-size: 22px; }
+        .ctrl-btn.jump { width: 76px; font-size: 12px; }
+    }
+
+    .hidden { display: none !important; }
+
+    /* ---------- Overlays inside canvas (pause / game over) ---------- */
+    .canvas-overlay {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(10,10,26,0.88);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        text-align: center;
+        padding: 20px;
+    }
+    .canvas-overlay h1 {
+        font-size: 30px;
+        text-shadow: 0 0 20px #e94560;
+        margin-bottom: 10px;
+        letter-spacing: 1px;
+    }
+    .canvas-overlay p { font-size: 17px; margin: 4px 0; color: #cfd6ff; }
+    .canvas-overlay .accent { color: #ffd166; font-weight: bold; }
+    .stack-btns { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; width: 80%; max-width: 220px; }
+
+    /* ---------- Buttons (shared) ---------- */
+    .btn {
+        padding: 13px 28px;
+        background: #e94560;
+        border: none;
+        border-radius: 30px;
+        color: white;
+        font-size: 17px;
+        font-weight: bold;
+        font-family: inherit;
+        cursor: pointer;
+        box-shadow: 0 4px 0 #a02040;
+        transition: 0.05s linear;
+    }
+    .btn:active { transform: translateY(4px); box-shadow: none; }
+    .btn.secondary { background: #2a2a4a; box-shadow: 0 4px 0 #14142a; }
+    .btn.secondary:active { box-shadow: none; }
+    .btn.small { padding: 9px 18px; font-size: 14px; }
+
+    /* ---------- Menu / Settings full screens ---------- */
+    .screen {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 400 / 600;
+        background: linear-gradient(180deg, #16213e 0%, #0f3460 100%);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        padding: 24px 20px;
+        gap: 14px;
+        overflow: hidden;
+    }
+    .screen::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(circle at 20% 15%, rgba(233,69,96,0.15), transparent 40%),
+            radial-gradient(circle at 80% 85%, rgba(58,110,165,0.25), transparent 45%);
+        pointer-events: none;
+    }
+    .screen-title {
+        font-size: 30px;
+        font-weight: bold;
+        text-shadow: 0 0 16px rgba(233,69,96,0.7);
+        margin-bottom: 2px;
+        z-index: 1;
+        text-align: center;
+    }
+    .screen-sub {
+        font-size: 13px;
+        color: #9fa8da;
+        z-index: 1;
+        text-align: center;
+        margin-bottom: 8px;
+    }
+    .best-badge {
+        z-index: 1;
+        background: #0a0a1a;
+        border: 1px solid #ffd16655;
+        padding: 6px 18px;
+        border-radius: 20px;
+        font-size: 14px;
+        color: #ffd166;
+        margin-bottom: 6px;
+    }
+    .menu-btns { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 240px; z-index: 1; }
+    .menu-btns .btn { width: 100%; }
+
+    /* Settings rows */
+    .settings-box {
+        width: 100%;
+        max-width: 280px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        z-index: 1;
+        background: rgba(10,10,26,0.4);
+        padding: 18px 18px 6px;
+        border-radius: 14px;
+    }
+    .setting-row { display: flex; flex-direction: column; gap: 6px; }
+    .setting-row .row-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    .switch {
+        position: relative;
+        width: 46px;
+        height: 26px;
+        flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider-track {
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background: #33345a;
+        border-radius: 26px;
+        transition: 0.15s;
+    }
+    .switch .slider-track::before {
+        content: "";
+        position: absolute;
+        height: 20px; width: 20px;
+        left: 3px; bottom: 3px;
+        background: white;
+        border-radius: 50%;
+        transition: 0.15s;
+    }
+    .switch input:checked + .slider-track { background: #e94560; }
+    .switch input:checked + .slider-track::before { transform: translateX(20px); }
+
+    input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 6px;
+        border-radius: 4px;
+        background: #33345a;
+        outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px; height: 18px;
+        border-radius: 50%;
+        background: #e94560;
+        cursor: pointer;
+        border: 2px solid #ffd166;
+    }
+    input[type="range"]::-moz-range-thumb {
+        width: 18px; height: 18px;
+        border-radius: 50%;
+        background: #e94560;
+        cursor: pointer;
+        border: 2px solid #ffd166;
+    }
+    input[type="range"]:disabled::-webkit-slider-thumb { border-color: #666; background: #555; }
+    input[type="range"]:disabled { opacity: 0.5; }
+
+    .how-to-play {
+        z-index: 1;
+        font-size: 11.5px;
+        color: #8b93c9;
+        text-align: center;
+        max-width: 280px;
+        line-height: 1.5;
+    }
+</style>
 </head>
 <body>
-<div class="game-wrapper">
-    <div class="game-container">
-        <canvas id="gameCanvas" width="400" height="600"></canvas>
-        <div id="gameOverlay" class="game-over-overlay hidden">
-            <h1>💀 ПРОИГРЫШ</h1>
-            <p>Счёт: <span id="finalScore">0</span></p>
-            <p>Рекорд: <span id="finalRecord">0</span></p>
-            <button id="restartBtn">ИГРАТЬ СНОВА</button>
+<div class="game-wrapper" id="wrapper">
+
+    <!-- ===================== ГЛАВНОЕ МЕНЮ ===================== -->
+    <div class="screen" id="menuScreen">
+        <div class="screen-title">🏗️ СТРОИТЕЛЬ</div>
+        <div class="screen-sub">Собирай коробки в ряд и бей их головой!</div>
+        <div class="best-badge">⭐ Рекорд: <span id="menuRecord">0</span></div>
+        <div class="menu-btns">
+            <button class="btn" id="playBtn">▶ ИГРАТЬ</button>
+            <button class="btn secondary" id="settingsBtn">⚙ НАСТРОЙКИ</button>
+        </div>
+        <div class="how-to-play">
+            Двигай коробки, чтобы выстроить целый ряд без просветов — ряд исчезнет и принесёт очки.
+            Прыгни и ударь коробку снизу головой, чтобы разбить её на месте.
         </div>
     </div>
-    <div class="ui">
-        <span>🏆 <span id="scoreDisplay">0</span></span>
-        <span>⭐ Рекорд: <span id="recordDisplay">0</span></span>
+
+    <!-- ===================== НАСТРОЙКИ ===================== -->
+    <div class="screen hidden" id="settingsScreen">
+        <div class="screen-title" style="font-size:24px;">⚙ Настройки</div>
+        <div class="settings-box">
+            <div class="setting-row">
+                <div class="row-top">
+                    <span>🔊 Звуки</span>
+                    <label class="switch">
+                        <input type="checkbox" id="soundToggle">
+                        <span class="slider-track"></span>
+                    </label>
+                </div>
+                <input type="range" id="soundVolume" min="0" max="100" value="60">
+            </div>
+            <div class="setting-row">
+                <div class="row-top">
+                    <span>🎵 Музыка</span>
+                    <label class="switch">
+                        <input type="checkbox" id="musicToggle">
+                        <span class="slider-track"></span>
+                    </label>
+                </div>
+                <input type="range" id="musicVolume" min="0" max="100" value="45">
+            </div>
+        </div>
+        <div class="menu-btns" style="margin-top:6px;">
+            <button class="btn secondary" id="backBtn">← НАЗАД</button>
+        </div>
     </div>
-    <div class="controls">
-        <button class="ctrl-btn" id="leftBtn">◀</button>
-        <button class="ctrl-btn jump" id="jumpBtn">ПРЫГ</button>
-        <button class="ctrl-btn" id="rightBtn">▶</button>
+
+    <!-- ===================== ИГРА ===================== -->
+    <div class="game-container hidden" id="gameScreen">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+        <div class="canvas-overlay hidden" id="pauseOverlay">
+            <h1>⏸ ПАУЗА</h1>
+            <div class="stack-btns">
+                <button class="btn" id="resumeBtn">▶ ПРОДОЛЖИТЬ</button>
+                <button class="btn secondary" id="pauseSettingsBtn">⚙ НАСТРОЙКИ</button>
+                <button class="btn secondary" id="pauseMenuBtn">🏠 В МЕНЮ</button>
+            </div>
+        </div>
+
+        <div class="canvas-overlay hidden" id="gameOverlay">
+            <h1>💀 ПРОИГРЫШ</h1>
+            <p>Счёт: <span class="accent" id="finalScore">0</span></p>
+            <p>Рекорд: <span class="accent" id="finalRecord">0</span></p>
+            <div class="stack-btns">
+                <button class="btn" id="restartBtn">↻ ИГРАТЬ СНОВА</button>
+                <button class="btn secondary" id="gameOverMenuBtn">🏠 В МЕНЮ</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui hidden" id="uiBar">
+        <span class="pill">🏆 <span id="scoreDisplay">0</span></span>
+        <span class="pill">⭐ <span id="recordDisplay">0</span></span>
+        <button class="pause-btn" id="pauseBtn">⏸</button>
+    </div>
+    <div class="controls hidden" id="controlsBar">
+        <div class="move-pad">
+            <button class="ctrl-btn" id="leftBtn">◀</button>
+            <button class="ctrl-btn" id="rightBtn">▶</button>
+        </div>
+        <button class="ctrl-btn jump" id="jumpBtn">⬆<br>ПРЫГ</button>
     </div>
 </div>
 
 <script>
 // ============================================================
-// 1. ИНИЦИАЛИЗАЦИЯ
+// 0. НАСТРОЙКИ И ЗВУК (Web Audio API, без внешних файлов)
+// ============================================================
+class AudioManager {
+    constructor() {
+        this.ctx = null;
+        this.musicGain = null;
+        this.sfxGain = null;
+        this.musicEnabled = localStorage.getItem('bd_musicEnabled') !== 'false';
+        this.soundEnabled = localStorage.getItem('bd_soundEnabled') !== 'false';
+        this.musicVolume = parseFloat(localStorage.getItem('bd_musicVolume') ?? '0.45');
+        this.soundVolume = parseFloat(localStorage.getItem('bd_soundVolume') ?? '0.6');
+        this.musicTimer = null;
+        this.musicStep = 0;
+        this.started = false;
+        // Пентатоника, спокойная мелодия
+        this.pattern = [261.63, 329.63, 392.00, 329.63, 293.66, 392.00, 440.00, 392.00,
+                         329.63, 261.63, 329.63, 392.00, 440.00, 493.88, 440.00, 392.00];
+        this.bassPattern = [130.81, 0, 0, 0, 146.83, 0, 0, 0, 164.81, 0, 0, 0, 130.81, 0, 0, 0];
+    }
+
+    ensureContext() {
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            this.musicGain = this.ctx.createGain();
+            this.musicGain.gain.value = this.musicEnabled ? this.musicVolume : 0;
+            this.musicGain.connect(this.ctx.destination);
+            this.sfxGain = this.ctx.createGain();
+            this.sfxGain.gain.value = this.soundEnabled ? this.soundVolume : 0;
+            this.sfxGain.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+    }
+
+    // --- вызывать по первому жесту пользователя ---
+    start() {
+        this.ensureContext();
+        if (!this.started) {
+            this.started = true;
+            this.scheduleMusicLoop();
+        }
+    }
+
+    tone(freq, dur, type, vol, delay, gainNode) {
+        if (!this.ctx) return;
+        const t0 = this.ctx.currentTime + (delay || 0);
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = type || 'sine';
+        osc.frequency.setValueAtTime(freq, t0);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.linearRampToValueAtTime(vol, t0 + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        osc.connect(g).connect(gainNode || this.sfxGain);
+        osc.start(t0);
+        osc.stop(t0 + dur + 0.03);
+    }
+
+    noiseBurst(dur, vol, delay) {
+        if (!this.ctx) return;
+        const t0 = this.ctx.currentTime + (delay || 0);
+        const bufferSize = this.ctx.sampleRate * dur;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        }
+        const src = this.ctx.createBufferSource();
+        src.buffer = buffer;
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(vol, t0);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 900;
+        src.connect(filter).connect(g).connect(this.sfxGain);
+        src.start(t0);
+    }
+
+    sfxClick() { this.ensureContext(); this.tone(520, 0.08, 'square', 0.35); }
+    sfxJump() { this.ensureContext(); this.tone(420, 0.12, 'triangle', 0.45); this.tone(680, 0.1, 'triangle', 0.3, 0.05); }
+    sfxLand() { this.ensureContext(); this.tone(160, 0.09, 'sine', 0.3); }
+    sfxPush() { this.ensureContext(); this.tone(220, 0.06, 'square', 0.18); }
+    sfxBreak() { this.ensureContext(); this.noiseBurst(0.18, 0.5); this.tone(180, 0.12, 'sawtooth', 0.25); }
+    sfxLine(count) {
+        this.ensureContext();
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        for (let i = 0; i < Math.min(count, notes.length); i++) {
+            this.tone(notes[i], 0.22, 'triangle', 0.4, i * 0.06);
+        }
+    }
+    sfxGameOver() {
+        this.ensureContext();
+        [440, 349.23, 293.66, 220].forEach((f, i) => this.tone(f, 0.35, 'sawtooth', 0.35, i * 0.14));
+    }
+
+    scheduleMusicLoop() {
+        const stepDur = 0.34;
+        const playStep = () => {
+            if (!this.ctx) return;
+            const note = this.pattern[this.musicStep % this.pattern.length];
+            const bass = this.bassPattern[this.musicStep % this.bassPattern.length];
+            this.tone(note, stepDur * 0.9, 'sine', 0.22, 0, this.musicGain);
+            if (bass > 0) this.tone(bass, stepDur * 1.6, 'triangle', 0.16, 0, this.musicGain);
+            this.musicStep++;
+            this.musicTimer = setTimeout(playStep, stepDur * 1000);
+        };
+        playStep();
+    }
+
+    setSoundEnabled(on) {
+        this.soundEnabled = on;
+        localStorage.setItem('bd_soundEnabled', on);
+        if (this.sfxGain) this.sfxGain.gain.value = on ? this.soundVolume : 0;
+    }
+    setMusicEnabled(on) {
+        this.musicEnabled = on;
+        localStorage.setItem('bd_musicEnabled', on);
+        if (this.musicGain) this.musicGain.gain.value = on ? this.musicVolume : 0;
+    }
+    setSoundVolume(v) {
+        this.soundVolume = v;
+        localStorage.setItem('bd_soundVolume', v);
+        if (this.sfxGain && this.soundEnabled) this.sfxGain.gain.value = v;
+    }
+    setMusicVolume(v) {
+        this.musicVolume = v;
+        localStorage.setItem('bd_musicVolume', v);
+        if (this.musicGain && this.musicEnabled) this.musicGain.gain.value = v;
+    }
+}
+const audio = new AudioManager();
+
+// ============================================================
+// 1. ИНИЦИАЛИЗАЦИЯ DOM
 // ============================================================
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const W = 400, H = 600;
-const CELL = 30;
 
 const scoreSpan = document.getElementById('scoreDisplay');
 const recordSpan = document.getElementById('recordDisplay');
+const menuRecordSpan = document.getElementById('menuRecord');
 const finalScoreSpan = document.getElementById('finalScore');
 const finalRecordSpan = document.getElementById('finalRecord');
-const overlay = document.getElementById('gameOverlay');
-const restartBtn = document.getElementById('restartBtn');
+const gameOverlay = document.getElementById('gameOverlay');
+const pauseOverlay = document.getElementById('pauseOverlay');
+
+const menuScreen = document.getElementById('menuScreen');
+const settingsScreen = document.getElementById('settingsScreen');
+const gameScreen = document.getElementById('gameScreen');
+const uiBar = document.getElementById('uiBar');
+const controlsBar = document.getElementById('controlsBar');
 
 let game = null;
 let record = parseInt(localStorage.getItem('builderRecord')) || 0;
+let settingsReturnTo = 'menu'; // куда возвращаться из настроек: 'menu' или 'pause'
 recordSpan.textContent = record;
+menuRecordSpan.textContent = record;
 
 // ============================================================
 // 2. КЛАСС ИГРЫ
 // ============================================================
 class Game {
     constructor() {
+        // --- Сетка: коробки всегда стоят строго в фиксированных слотах ---
+        this.cubeSize = 40;
+        this.COLS = Math.floor(W / this.cubeSize);      // 10 колонок
+        this.MAX_ROWS = 12;                              // макс. высота стопки в колонке
+        this.floorY = H - 20;
+        this.columns = [];                                // columns[c] = [ {col,row,x,y,visualX,visualY,w,h}, ... ] снизу вверх
+        for (let c = 0; c < this.COLS; c++) this.columns.push([]);
+
         this.player = {
-            x: W/2 - 12,
-            y: H - 60 - 34,
-            w: 24,
-            h: 34,
-            vx: 0,
-            vy: 0,
-            onGround: true,
-            facing: 1,
-            frame: 0,
+            x: W/2 - 12, y: this.floorY - 34, w: 24, h: 34,
+            vx: 0, vy: 0, onGround: true, facing: 1, frame: 0,
         };
-        this.cubes = [];          // падающие
-        this.staticCubes = [];    // упавшие на землю
+        this.cubes = [];        // падающие (ещё не в сетке)
         this.grabs = [];
+        this.particles = [];
         this.score = 0;
         this.gameOver = false;
+        this.paused = false;
         this.time = 0;
-        this.grabSpeed = 1.2;
-        this.dropInterval = 60;    // кадров между сбросами
-        this.grabCount = 1;
-        this.nextGrabAdd = 15;     // секунд до добавления хваталки
-        this.timer = 0;
+        this.pushCooldown = 0;   // не даёт толкать коробку на "полшага"; толчок — всегда целый слот
         this.keys = { left: false, right: false };
-        this.initGrabs();
-    }
+        this.shake = 0;
 
-    initGrabs() {
+        // --- Краны: каждый несёт ровно один блок, делает один проезд, сбрасывает
+        //     блок один раз, уезжает за экран и возвращается с новым блоком ---
+        this.grabCount = 1;              // сколько кранов сейчас активно (растёт до 7)
+        this.blocksDropped = 0;          // счётчик сброшенных блоков с начала игры — от него зависит появление новых кранов
+        // Порог (в кол-ве сброшенных блоков), после которого появляется следующий кран.
+        // Интервалы нарастают, поэтому 7-й кран появляется нескоро, а не за минуту.
+        this.craneThresholds = [0, 7, 16, 28, 44, 64, 90];
+        this.speedMul = 1;               // общий плавный рост скорости кранов со временем
+        this.speedMulTimer = 0;
         this.grabs = [];
-        for (let i = 0; i < this.grabCount; i++) {
-            const spacing = W / (this.grabCount + 1);
-            // Стартуем слева за экраном
-            this.grabs.push({
-                x: -30 - i * 20,
-                y: 30 + i * 10,
-                w: 30,
-                h: 16,
-                speed: this.grabSpeed + i * 0.2,
-                dir: 1,
-                cooldown: 60 + Math.random() * 100,
-                timer: 0,
-            });
-        }
+        this.grabs.push(this.spawnCrane(0, this.laneBaseSpeed(0)));
     }
 
-    reset() {
-        this.player.x = W/2 - 12;
-        this.player.y = H - 60 - 34;
-        this.player.vx = 0;
-        this.player.vy = 0;
-        this.player.onGround = true;
-        this.player.frame = 0;
-        this.cubes = [];
-        this.staticCubes = [];
-        this.score = 0;
-        this.gameOver = false;
-        this.time = 0;
-        this.grabSpeed = 1.2;
-        this.dropInterval = 60;
-        this.grabCount = 1;
-        this.nextGrabAdd = 15;
-        this.timer = 0;
-        this.initGrabs();
-        overlay.classList.add('hidden');
-        updateUI();
+    // Базовая скорость крана для его "дорожки" — старт медленный, дальше чуть быстрее.
+    laneBaseSpeed(lane) {
+        return 0.55 + lane * 0.13;
+    }
+
+    randomDropX(dir) {
+        const margin = W * 0.18;
+        return margin + Math.random() * (W - margin * 2);
+    }
+
+    spawnCrane(lane, speed) {
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        return {
+            lane,
+            y: 26 + lane * 14,
+            w: 30, h: 16,
+            x: dir === 1 ? -40 : W + 40,
+            dir,
+            speed: speed + (Math.random() * 0.08 - 0.04),
+            hasBlock: true,
+            dropped: false,
+            dropAtX: this.randomDropX(dir),
+        };
+    }
+
+    // Проверяет, не пора ли добавить следующий кран (по числу сброшенных блоков)
+    maybeAddCrane() {
+        while (this.grabCount < 7 && this.blocksDropped >= this.craneThresholds[this.grabCount]) {
+            this.grabs.push(this.spawnCrane(this.grabCount, this.laneBaseSpeed(this.grabCount)));
+            this.grabCount++;
+        }
     }
 
     // --- Управление ---
     keyDown(key) {
+        if (this.gameOver || this.paused) return;
         if (key === 'left') this.keys.left = true;
         if (key === 'right') this.keys.right = true;
         if (key === 'jump') {
-            if (this.player.onGround && !this.gameOver) {
-                this.player.vy = -7.2;
+            if (this.player.onGround) {
+                this.player.vy = -7.4;
                 this.player.onGround = false;
+                audio.sfxJump();
             }
         }
     }
@@ -253,229 +631,335 @@ class Game {
         if (key === 'right') this.keys.right = false;
     }
 
+    colX(col) { return col * this.cubeSize; }
+    rowY(row) { return this.floorY - (row + 1) * this.cubeSize; }
+
+    // --- Попытка толкнуть верхнюю коробку колонки fromCol на 1 слот в сторону dir ---
+    attemptPush(fromCol, dir) {
+        const toCol = fromCol + dir;
+        if (toCol < 0 || toCol >= this.COLS) return false;
+        if (this.columns[fromCol].length === 0) return false;
+        if (this.columns[toCol].length >= this.MAX_ROWS) return false;
+        const cube = this.columns[fromCol].pop();
+        cube.col = toCol;
+        cube.row = this.columns[toCol].length;
+        cube.x = this.colX(toCol);
+        cube.y = this.rowY(cube.row);
+        this.columns[toCol].push(cube);
+        audio.sfxPush();
+        return true;
+    }
+
+    // --- Столкновения игрока с коробками: толчок ровно на 1 слот, либо жёсткая стена ---
+    resolveCubeCollisions() {
+        if (this.pushCooldown > 0) this.pushCooldown--;
+        for (let c = 0; c < this.COLS; c++) {
+            const stack = this.columns[c];
+            for (let idx = 0; idx < stack.length; idx++) {
+                const cube = stack[idx];
+                const vertOverlap = this.player.y < cube.y + cube.h - 2 && this.player.y + this.player.h > cube.y + 2;
+                if (!vertOverlap) continue;
+                const horizOverlap = this.player.x < cube.x + cube.w && this.player.x + this.player.w > cube.x;
+                if (!horizOverlap) continue;
+
+                const isTop = idx === stack.length - 1;
+                const dir = this.player.vx > 0.15 ? 1 : (this.player.vx < -0.15 ? -1 : 0);
+
+                if (isTop && dir !== 0 && this.pushCooldown <= 0) {
+                    // толкаем только если игрок реально идёт со стороны cube в направлении dir
+                    const pushingFromLeft = dir === 1 && this.player.x + this.player.w - cube.x < this.cubeSize * 0.6;
+                    const pushingFromRight = dir === -1 && cube.x + cube.w - this.player.x < this.cubeSize * 0.6;
+                    if (pushingFromLeft || pushingFromRight) {
+                        if (this.attemptPush(c, dir)) {
+                            this.pushCooldown = 14; // задержка = толчок ровно на 1 слот за раз
+                            continue;
+                        }
+                    }
+                }
+                // стена: коробка не толкается (не верхняя, нет места, кулдаун) — блокируем игрока
+                if (this.player.x + this.player.w - cube.x < cube.w / 2) {
+                    this.player.x = cube.x - this.player.w;
+                } else {
+                    this.player.x = cube.x + cube.w;
+                }
+                this.player.vx = 0;
+            }
+        }
+    }
+
     // --- Обновление ---
     update() {
-        if (this.gameOver) return;
+        if (this.gameOver || this.paused) return;
         this.time += 1/60;
-        this.timer++;
 
         // 1. Движение игрока
-        const accel = 0.5;
-        const maxSpeed = 3.8;
+        const accel = 0.5, maxSpeed = 3.8;
         if (this.keys.left) {
-            this.player.vx -= accel;
-            this.player.facing = -1;
+            this.player.vx -= accel; this.player.facing = -1;
             if (this.player.vx < -maxSpeed) this.player.vx = -maxSpeed;
         } else if (this.keys.right) {
-            this.player.vx += accel;
-            this.player.facing = 1;
+            this.player.vx += accel; this.player.facing = 1;
             if (this.player.vx > maxSpeed) this.player.vx = maxSpeed;
         } else {
             this.player.vx *= 0.85;
             if (Math.abs(this.player.vx) < 0.1) this.player.vx = 0;
         }
-        if (Math.abs(this.player.vx) > 0.3) {
-            this.player.frame += 0.15;
-        } else {
-            this.player.frame = 0;
-        }
+        this.player.frame += Math.abs(this.player.vx) > 0.3 ? 0.15 : 0;
 
         // Гравитация
         this.player.vy += 0.45;
-        if (this.player.vy > 8) this.player.vy = 8;
+        if (this.player.vy > 8.5) this.player.vy = 8.5;
 
-        // Перемещение
+        const wasOnGround = this.player.onGround;
+
+        // Горизонтальное перемещение + толкание/блокировка коробок
         this.player.x += this.player.vx;
-        this.player.y += this.player.vy;
-
-        // Границы X
+        if (this.player.x < 0) this.player.x = 0;
+        if (this.player.x + this.player.w > W) this.player.x = W - this.player.w;
+        this.resolveCubeCollisions();
         if (this.player.x < 0) this.player.x = 0;
         if (this.player.x + this.player.w > W) this.player.x = W - this.player.w;
 
+        this.player.y += this.player.vy;
+
         // Пол
-        if (this.player.y + this.player.h >= H - 10) {
-            this.player.y = H - 10 - this.player.h;
+        if (this.player.y + this.player.h >= this.floorY) {
+            this.player.y = this.floorY - this.player.h;
+            if (this.player.vy > 3 && !wasOnGround) audio.sfxLand();
             this.player.vy = 0;
             this.player.onGround = true;
         } else {
             this.player.onGround = false;
         }
-
-        // --- Взаимодействие со статичными кубиками (толкание) ---
-        // Если игрок движется в сторону кубика, пытаемся сдвинуть кубик
-        for (let s of this.staticCubes) {
-            // Проверяем столкновение игрока с кубиком
-            if (this.player.x < s.x + s.w && this.player.x + this.player.w > s.x &&
-                this.player.y < s.y + s.h && this.player.y + this.player.h > s.y) {
-                // Определяем направление толчка: если игрок движется вправо и находится левее кубика
-                if (this.player.vx > 0 && this.player.x + this.player.w - s.x < 8) {
-                    // Толкаем кубик вправо
-                    const newX = s.x + this.player.vx;
-                    // Проверяем, не выйдет ли кубик за границу или не столкнётся с другим
-                    if (newX + s.w <= W && !this.staticCubes.some(other => other !== s && newX < other.x + other.w && newX + s.w > other.x)) {
-                        s.x = newX;
-                    }
-                } else if (this.player.vx < 0 && s.x + s.w - this.player.x < 8) {
-                    // Толкаем влево
-                    const newX = s.x + this.player.vx;
-                    if (newX >= 0 && !this.staticCubes.some(other => other !== s && newX < other.x + other.w && newX + s.w > other.x)) {
-                        s.x = newX;
-                    }
+        // Приземление на верх стопки в колонке
+        if (this.player.vy >= 0) {
+            const cMin = Math.max(0, Math.floor(this.player.x / this.cubeSize));
+            const cMax = Math.min(this.COLS - 1, Math.floor((this.player.x + this.player.w - 1) / this.cubeSize));
+            for (let c = cMin; c <= cMax; c++) {
+                const stack = this.columns[c];
+                if (stack.length === 0) continue;
+                const top = stack[stack.length - 1];
+                if (this.player.y + this.player.h >= top.y && this.player.y + this.player.h <= top.y + 12) {
+                    this.player.y = top.y - this.player.h;
+                    this.player.vy = 0;
+                    this.player.onGround = true;
                 }
             }
         }
 
-        // 2. Хваталки
+        // 2. Краны: едут один проезд, несут один блок, сбрасывают его один раз,
+        //    уезжают за экран и возвращаются с новым блоком.
+        this.speedMulTimer++;
+        if (this.speedMulTimer >= 300) {           // раз в 5 секунд — очень плавный общий разгон
+            this.speedMulTimer = 0;
+            this.speedMul = Math.min(1.8, this.speedMul + 0.015);
+        }
         for (let g of this.grabs) {
-            g.x += g.speed * g.dir;
-            if (g.x > W + 20) g.dir = -1;
-            if (g.x < -30) g.dir = 1;
+            g.x += g.speed * g.dir * this.speedMul;
 
-            g.timer++;
-            if (g.timer >= g.cooldown) {
-                g.timer = 0;
-                g.cooldown = Math.max(25, this.dropInterval + Math.random() * 60);
-                this.cubes.push({
-                    x: g.x + g.w/2 - 12,
-                    y: g.y + g.h,
-                    w: 24,
-                    h: 24,
-                    vy: 1.5,
-                });
+            // Сброс блока один раз за проезд, в случайной точке маршрута
+            if (g.hasBlock && !g.dropped) {
+                const reachedDropPoint = (g.dir === 1 && g.x >= g.dropAtX) || (g.dir === -1 && g.x <= g.dropAtX);
+                if (reachedDropPoint) {
+                    const col = Math.min(this.COLS - 1, Math.max(0, Math.floor((g.x + g.w/2) / this.cubeSize)));
+                    this.cubes.push({
+                        col, x: this.colX(col), y: g.y + g.h, w: this.cubeSize, h: this.cubeSize, vy: 1.4,
+                    });
+                    g.dropped = true;
+                    g.hasBlock = false;
+                    this.blocksDropped++;
+                    this.maybeAddCrane();
+                }
+            }
+
+            // Уехал за пределы экрана — возвращается с новым блоком с той же стороны
+            if ((g.dir === 1 && g.x > W + 40) || (g.dir === -1 && g.x < -70)) {
+                const newDir = Math.random() < 0.5 ? 1 : -1;
+                g.dir = newDir;
+                g.x = newDir === 1 ? -40 : W + 40;
+                g.dropped = false;
+                g.hasBlock = true;
+                g.dropAtX = this.randomDropX(newDir);
             }
         }
 
-        // 3. Падение кубиков
-        for (let i = this.cubes.length-1; i >= 0; i--) {
+        // 3. Падение кубиков (x зафиксирован по колонке — наложений быть не может)
+        for (let i = this.cubes.length - 1; i >= 0; i--) {
             const c = this.cubes[i];
             c.y += c.vy;
-            c.vy += 0.1;
-            if (c.vy > 5) c.vy = 5;
+            c.vy = Math.min(c.vy + 0.12, 6);
 
             // Столкновение с игроком
-            if (!this.gameOver && this.player.x < c.x + c.w && this.player.x + this.player.w > c.x &&
-                this.player.y < c.y + c.h && this.player.y + this.player.h > c.y) {
-                // Если игрок движется вверх и касается кубика снизу (бьёт головой)
-                if (this.player.vy < 0 && (this.player.y + this.player.h - c.y) < 12) {
-                    // Разбиваем кубик
+            const overlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
+            const overlapY = this.player.y < c.y + c.h - 3 && this.player.y + this.player.h > c.y + 3;
+            if (!this.gameOver && overlapX && overlapY) {
+                const headButt = this.player.vy < -1 && (this.player.y - c.y - c.h) > -14 && this.player.y < c.y + c.h/2;
+                if (headButt) {
                     this.cubes.splice(i, 1);
-                    this.score += 1;
+                    this.score += 5;
+                    this.player.vy = 2.2;
+                    this.spawnParticles(c.x + c.w/2, c.y + c.h/2);
+                    audio.sfxBreak();
                     updateUI();
                     continue;
                 } else {
-                    // Смерть
-                    this.gameOver = true;
-                    this.showGameOver();
+                    this.triggerGameOver();
                     return;
                 }
             }
 
-            // Приземление на пол или на другие кубики
-            let landed = false;
-            if (c.y + c.h >= H - 10) {
-                this.staticCubes.push({ x: c.x, y: H - 10 - c.h, w: c.w, h: c.h });
-                this.cubes.splice(i, 1);
-                this.checkLines();
-                landed = true;
-                continue;
-            }
-            for (let s of this.staticCubes) {
-                if (c.x < s.x + s.w && c.x + c.w > s.x &&
-                    c.y + c.h >= s.y && c.y + c.h <= s.y + 8) {
-                    this.staticCubes.push({ x: c.x, y: s.y - c.h, w: c.w, h: c.h });
-                    this.cubes.splice(i, 1);
-                    this.checkLines();
-                    landed = true;
-                    break;
+
+// Поверхность посадки: верх стопки в этой колонке, либо другой ещё летящий кубик ниже него
+            let surfaceY = this.rowY(this.columns[c.col].length) + this.cubeSize; // = floorY - height*cubeSize
+            for (let other of this.cubes) {
+                if (other !== c && other.col === c.col && other.y > c.y) {
+                    surfaceY = Math.min(surfaceY, other.y);
                 }
             }
-            if (landed) continue;
-        }
-
-        // 4. Сложность
-        if (this.time > this.nextGrabAdd && this.grabCount < 4) {
-            this.grabCount++;
-            this.nextGrabAdd += 18 + Math.random() * 10;
-            this.grabSpeed += 0.3;
-            this.dropInterval = Math.max(25, this.dropInterval - 5);
-            this.initGrabs();
-        }
-        if (this.time % 4 < 0.02) {
-            this.grabSpeed += 0.03;
-            for (let g of this.grabs) {
-                g.speed = this.grabSpeed + (this.grabs.indexOf(g) * 0.2);
+            if (c.y + c.h >= surfaceY) {
+                const row = this.columns[c.col].length;
+                const cube = {
+                    col: c.col, row,
+                    x: this.colX(c.col), y: this.rowY(row),
+                    w: this.cubeSize, h: this.cubeSize,
+                };
+                cube.visualX = cube.x; cube.visualY = c.y; // плавно "долетит" визуально
+                this.columns[c.col].push(cube);
+                this.cubes.splice(i, 1);
+                audio.sfxLand();
+                this.checkLines();
             }
         }
+
+        // Плавное скольжение визуальной позиции коробок к их логическому слоту
+        for (let c = 0; c < this.COLS; c++) {
+            for (let cube of this.columns[c]) {
+                if (cube.visualX === undefined) { cube.visualX = cube.x; cube.visualY = cube.y; }
+                cube.visualX += (cube.x - cube.visualX) * 0.35;
+                cube.visualY += (cube.y - cube.visualY) * 0.35;
+            }
+        }
+
+        // 4. Частицы
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life -= 1;
+            if (p.life <= 0) this.particles.splice(i, 1);
+        }
+        if (this.shake > 0) this.shake *= 0.85;
 
         updateUI();
     }
 
-    // --- Проверка линий (Тетрис) ---
+    // --- Проверка линий (Тетрис): ряд полон, если во ВСЕХ колонках есть коробка на этой высоте ---
     checkLines() {
-        const rows = {};
-        for (let s of this.staticCubes) {
-            const key = Math.round(s.y);
-            if (!rows[key]) rows[key] = [];
-            rows[key].push(s);
-        }
-        let linesCleared = 0;
-        for (let y in rows) {
-            const cubes = rows[y];
-            const coverage = new Array(W).fill(false);
-            for (let c of cubes) {
-                for (let x = Math.floor(c.x); x < Math.ceil(c.x + c.w); x++) {
-                    if (x >= 0 && x < W) coverage[x] = true;
-                }
-            }
+        let maxHeight = 0;
+        for (let c = 0; c < this.COLS; c++) maxHeight = Math.max(maxHeight, this.columns[c].length);
+        const fullRows = [];
+        for (let r = 0; r < maxHeight; r++) {
             let full = true;
-            for (let x = 0; x < W; x++) {
-                if (!coverage[x]) { full = false; break; }
+            for (let c = 0; c < this.COLS; c++) {
+                if (this.columns[c].length <= r) { full = false; break; }
             }
-            if (full) {
-                this.staticCubes = this.staticCubes.filter(s => Math.round(s.y) !== parseInt(y));
-                linesCleared++;
-                for (let s of this.staticCubes) {
-                    if (s.y < parseInt(y)) s.y += 30;
-                }
+            if (full) fullRows.push(r);
+        }
+        if (fullRows.length === 0) return;
+        const fullSet = new Set(fullRows);
+
+        for (let c = 0; c < this.COLS; c++) {
+            for (let r of fullRows) {
+                const cube = this.columns[c][r];
+                if (cube) this.spawnParticles(cube.x + cube.w/2, cube.y + cube.h/2, '#ffd166');
             }
         }
-        if (linesCleared > 0) {
-            this.score += linesCleared * 10;
-            updateUI();
+        for (let c = 0; c < this.COLS; c++) {
+            this.columns[c] = this.columns[c].filter((cube, idx) => !fullSet.has(idx));
+            this.columns[c].forEach((cube, idx) => {
+                cube.row = idx;
+                cube.x = this.colX(c);
+                cube.y = this.rowY(idx);
+                if (cube.visualX === undefined) { cube.visualX = cube.x; cube.visualY = cube.y; }
+            });
+        }
+
+        const n = fullRows.length;
+        const bonus = [0, 50, 120, 210, 320][Math.min(n, 4)];
+        this.score += bonus;
+        this.shake = 6;
+        audio.sfxLine(n);
+        updateUI();
+    }
+
+    spawnParticles(x, y, color) {
+        for (let i = 0; i < 10; i++) {
+            this.particles.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 5,
+                vy: -Math.random() * 4 - 1,
+                life: 22 + Math.random() * 10,
+                color: color || '#ff9b6b',
+                size: 2 + Math.random() * 3,
+            });
         }
     }
 
     // --- Отрисовка ---
     draw() {
-        ctx.clearRect(0, 0, W, H);
-        ctx.fillStyle = '#0f3460';
+        ctx.save();
+        if (this.shake > 0.3) {
+            ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
+        }
+        ctx.clearRect(-10, -10, W + 20, H + 20);
+        // фон
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, '#12294f');
+        grad.addColorStop(1, '#0f3460');
+        ctx.fillStyle = grad;
         ctx.fillRect(0, 0, W, H);
 
-        // Статичные кубики
-        ctx.shadowColor = '#00000033';
+        // пол
+        ctx.fillStyle = '#2c3e50';
+        ctx.fillRect(0, this.floorY, W, H - this.floorY);
+        ctx.fillStyle = '#34495e';
+        ctx.fillRect(0, this.floorY, W, 4);
+
+        // тонкая разметка слотов (для наглядности сетки)
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 1;
+        for (let c = 1; c < this.COLS; c++) {
+            ctx.beginPath();
+            ctx.moveTo(c * this.cubeSize, 100);
+            ctx.lineTo(c * this.cubeSize, this.floorY);
+            ctx.stroke();
+        }
+
+        // статичные кубики (по их плавной визуальной позиции)
+        ctx.shadowColor = '#00000055';
         ctx.shadowBlur = 4;
-        for (let s of this.staticCubes) {
-            ctx.fillStyle = '#e0a060';
-            ctx.fillRect(s.x, s.y, s.w-1, s.h-1);
-            ctx.fillStyle = '#c08040';
-            ctx.fillRect(s.x+2, s.y+2, s.w-5, s.h-5);
+        for (let c = 0; c < this.COLS; c++) {
+            for (let s of this.columns[c]) {
+                const sx = s.visualX ?? s.x, sy = s.visualY ?? s.y;
+                ctx.fillStyle = '#e0a060';
+                ctx.fillRect(sx, sy, s.w - 1, s.h - 1);
+                ctx.fillStyle = '#c08040';
+                ctx.fillRect(sx + 4, sy + 4, s.w - 9, s.h - 9);
+            }
         }
         ctx.shadowBlur = 0;
 
-        // Падающие кубики
+        // падающие кубики
         ctx.shadowBlur = 8;
         ctx.shadowColor = '#ff6b6b66';
         for (let c of this.cubes) {
             ctx.fillStyle = '#ff6b6b';
             ctx.fillRect(c.x, c.y, c.w, c.h);
             ctx.fillStyle = '#ff3b3b';
-            ctx.fillRect(c.x+3, c.y+3, c.w-6, c.h-6);
+            ctx.fillRect(c.x + 3, c.y + 3, c.w - 6, c.h - 6);
         }
         ctx.shadowBlur = 0;
 
-        // Хваталки и канаты
+        // краны и канаты (высота троса всегда фиксирована — не удлиняется)
         for (let g of this.grabs) {
-            // Рисуем канат (линия от верха до хваталки)
             ctx.strokeStyle = '#888';
             ctx.lineWidth = 2;
             ctx.setLineDash([4, 6]);
@@ -484,76 +968,72 @@ class Game {
             ctx.lineTo(g.x + g.w/2, g.y);
             ctx.stroke();
             ctx.setLineDash([]);
-
-            // Сама хваатлка
             ctx.fillStyle = '#888';
             ctx.fillRect(g.x, g.y, g.w, g.h);
             ctx.fillStyle = '#aaa';
-            ctx.fillRect(g.x+2, g.y+2, g.w-4, g.h-4);
-            // Крюк
+            ctx.fillRect(g.x + 2, g.y + 2, g.w - 4, g.h - 4);
             ctx.fillStyle = '#555';
-            ctx.fillRect(g.x + g.w/2 - 3, g.y + g.h-2, 6, 4);
+            ctx.fillRect(g.x + g.w/2 - 3, g.y + g.h - 2, 6, 4);
+
+            // блок, который кран пока несёт (исчезает после сброса)
+            if (g.hasBlock) {
+                const bs = 16;
+                const bx = g.x + g.w/2 - bs/2, by = g.y + g.h + 2;
+                ctx.fillStyle = '#e0a060';
+                ctx.fillRect(bx, by, bs, bs);
+                ctx.fillStyle = '#c08040';
+                ctx.fillRect(bx + 2, by + 2, bs - 5, bs - 5);
+            }
         }
 
-        // Строитель
+        // частицы
+        for (let p of this.particles) {
+            ctx.globalAlpha = Math.max(0, p.life / 30);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+        }
+        ctx.globalAlpha = 1;
+
         this.drawPlayer();
 
-        // Информация
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = '#ffffffcc';
         ctx.font = 'bold 12px "Courier New"';
-        ctx.fillText('Время: ' + Math.floor(this.time) + 'с', 10, 20);
-        ctx.fillText('Хваталок: ' + this.grabCount, 10, 38);
+        ctx.fillText('⏱ ' + Math.floor(this.time) + 'с', 10, 20);
+        ctx.fillText('🏗 x' + this.grabCount, 10, 38);
+
+        ctx.restore();
     }
 
     drawPlayer() {
-        const p = this.player;
-        const x = p.x, y = p.y, f = p.facing;
-
-        // Тело (комбинезон)
+        const p = this.player, x = p.x, y = p.y, f = p.facing;
         ctx.fillStyle = '#3a6ea5';
-        ctx.fillRect(x+2, y+12, 20, 18);
-        // Голова
+        ctx.fillRect(x + 2, y + 12, 20, 18);
         ctx.fillStyle = '#f5d0b0';
-        ctx.fillRect(x+4, y+2, 16, 14);
-        // Кепка
+        ctx.fillRect(x + 4, y + 2, 16, 14);
         ctx.fillStyle = '#c0392b';
-        ctx.fillRect(x+2, y-2, 20, 6);
-        ctx.fillRect(x+6, y-6, 12, 4);
+        ctx.fillRect(x + 2, y - 2, 20, 6);
+        ctx.fillRect(x + 6, y - 6, 12, 4);
         ctx.fillStyle = '#a93226';
-        if (f === 1) ctx.fillRect(x+18, y-2, 6, 3);
-        else ctx.fillRect(x, y-2, 6, 3);
-        // Глаза
+        if (f === 1) ctx.fillRect(x + 18, y - 2, 6, 3); else ctx.fillRect(x, y - 2, 6, 3);
         ctx.fillStyle = '#000';
-        if (f === 1) {
-            ctx.fillRect(x+12, y+4, 3, 3);
-            ctx.fillRect(x+18, y+4, 3, 3);
-        } else {
-            ctx.fillRect(x+4, y+4, 3, 3);
-            ctx.fillRect(x+10, y+4, 3, 3);
-        }
-        // Руки (анимация ходьбы)
+        if (f === 1) { ctx.fillRect(x + 12, y + 4, 3, 3); ctx.fillRect(x + 18, y + 4, 3, 3); }
+        else { ctx.fillRect(x + 4, y + 4, 3, 3); ctx.fillRect(x + 10, y + 4, 3, 3); }
         ctx.fillStyle = '#f5d0b0';
         const armOff = Math.sin(p.frame) * 3;
-        if (f === 1) {
-            ctx.fillRect(x+20, y+12 + armOff, 4, 8);
-            ctx.fillRect(x-2, y+12 - armOff, 4, 8);
-        } else {
-            ctx.fillRect(x-2, y+12 + armOff, 4, 8);
-            ctx.fillRect(x+20, y+12 - armOff, 4, 8);
-        }
-        // Ноги
+        if (f === 1) { ctx.fillRect(x + 20, y + 12 + armOff, 4, 8); ctx.fillRect(x - 2, y + 12 - armOff, 4, 8); }
+        else { ctx.fillRect(x - 2, y + 12 + armOff, 4, 8); ctx.fillRect(x + 20, y + 12 - armOff, 4, 8); }
         ctx.fillStyle = '#2c3e50';
         const legOff = Math.sin(p.frame + 1) * 3;
-        ctx.fillRect(x+4, y+28 + legOff, 6, 6);
-        ctx.fillRect(x+14, y+28 - legOff, 6, 6);
-        // Сапоги
+        ctx.fillRect(x + 4, y + 28 + legOff, 6, 6);
+        ctx.fillRect(x + 14, y + 28 - legOff, 6, 6);
         ctx.fillStyle = '#5d4037';
-        ctx.fillRect(x+2, y+32 + legOff, 8, 4);
-        ctx.fillRect(x+14, y+32 - legOff, 8, 4);
+        ctx.fillRect(x + 2, y + 32 + legOff, 8, 4);
+        ctx.fillRect(x + 14, y + 32 - legOff, 8, 4);
     }
 
-    // --- Game Over ---
-    showGameOver() {
+    triggerGameOver() {
+        this.gameOver = true;
+        audio.sfxGameOver();
         finalScoreSpan.textContent = this.score;
         if (this.score > record) {
             record = this.score;
@@ -561,9 +1041,11 @@ class Game {
         }
         finalRecordSpan.textContent = record;
         recordSpan.textContent = record;
-        overlay.classList.remove('hidden');
+        menuRecordSpan.textContent = record;
+        gameOverlay.classList.remove('hidden');
     }
 }
+    
 
 // ============================================================
 // 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -575,64 +1057,164 @@ function updateUI() {
     }
 }
 
-// ============================================================
-
-    // 4. УПРАВЛЕНИЕ
-// ============================================================
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') { e.preventDefault(); if (game) game.keyDown('left'); }
-    if (e.key === 'ArrowRight') { e.preventDefault(); if (game) game.keyDown('right'); }
-    if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); if (game) game.keyDown('jump'); }
-});
-document.addEventListener('keyup', (e) => {
-    if (e.key === 'ArrowLeft') { e.preventDefault(); if (game) game.keyUp('left'); }
-    if (e.key === 'ArrowRight') { e.preventDefault(); if (game) game.keyUp('right'); }
-});
-
-// Кнопки
-document.getElementById('leftBtn').addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown('left'); });
-document.getElementById('leftBtn').addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp('left'); });
-document.getElementById('leftBtn').addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown('left'); });
-document.getElementById('leftBtn').addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp('left'); });
-
-document.getElementById('rightBtn').addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown('right'); });
-document.getElementById('rightBtn').addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp('right'); });
-document.getElementById('rightBtn').addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown('right'); });
-document.getElementById('rightBtn').addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp('right'); });
-
-document.getElementById('jumpBtn').addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown('jump'); });
-document.getElementById('jumpBtn').addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp('jump'); });
-document.getElementById('jumpBtn').addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown('jump'); });
-document.getElementById('jumpBtn').addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp('jump'); });
-
-// ============================================================
-// 5. ЗАПУСК
-// ============================================================
-function startGame() {
-    game = new Game();
-    game.reset();
-    function gameLoop() {
-        try {
-            game.update();
-            game.draw();
-        } catch (e) {
-            console.error(e);
-        }
-        requestAnimationFrame(gameLoop);
+let rafId = null;
+function gameLoop() {
+    if (game) {
+        try { game.update(); game.draw(); } catch (e) { console.error(e); }
     }
-    gameLoop();
+    rafId = requestAnimationFrame(gameLoop);
 }
 
-startGame();
+function newGame() {
+    game = new Game();
+    gameOverlay.classList.add('hidden');
+    pauseOverlay.classList.add('hidden');
+    updateUI();
+}
 
-// Кнопка рестарта
-restartBtn.addEventListener('click', () => {
-    if (game) {
-        game.reset();
+// ============================================================
+// 4. ПЕРЕКЛЮЧЕНИЕ ЭКРАНОВ
+// ============================================================
+function showMenu() {
+    menuScreen.classList.remove('hidden');
+    settingsScreen.classList.add('hidden');
+    gameScreen.classList.add('hidden');
+    uiBar.classList.add('hidden');
+    controlsBar.classList.add('hidden');
+    menuRecordSpan.textContent = record;
+}
+function showSettings(from) {
+    settingsReturnTo = from || 'menu';
+    settingsScreen.classList.remove('hidden');
+    menuScreen.classList.add('hidden');
+    if (from !== 'pause') { gameScreen.classList.add('hidden'); uiBar.classList.add('hidden'); controlsBar.classList.add('hidden'); }
+}
+function closeSettings() {
+    settingsScreen.classList.add('hidden');
+    if (settingsReturnTo === 'pause') {
+        gameScreen.classList.remove('hidden');
+        uiBar.classList.remove('hidden');
+        controlsBar.classList.remove('hidden');
+        pauseOverlay.classList.remove('hidden');
     } else {
-        startGame();
+        showMenu();
+    }
+}
+function showGame() {
+    menuScreen.classList.add('hidden');
+    settingsScreen.classList.add('hidden');
+    gameScreen.classList.remove('hidden');
+    uiBar.classList.remove('hidden');
+    controlsBar.classList.remove('hidden');
+}
+function togglePause(forceState) {
+    if (!game || game.gameOver) return;
+    const next = forceState !== undefined ? forceState : !game.paused;
+    game.paused = next;
+    pauseOverlay.classList.toggle('hidden', !next);
+}
+
+// ============================================================
+// 5. СОБЫТИЯ МЕНЮ / НАСТРОЕК
+// ============================================================
+document.getElementById('playBtn').addEventListener('click', () => {
+    audio.start();
+    audio.sfxClick();
+    newGame();
+    showGame();
+});
+document.getElementById('settingsBtn').addEventListener('click', () => {
+    audio.start(); audio.sfxClick();
+    showSettings('menu');
+});
+document.getElementById('backBtn').addEventListener('click', () => { audio.sfxClick(); closeSettings(); });
+document.getElementById('pauseSettingsBtn').addEventListener('click', () => { audio.sfxClick(); showSettings('pause'); });
+document.getElementById('pauseBtn').addEventListener('click', () => { audio.sfxClick(); togglePause(true); });
+document.getElementById('resumeBtn').addEventListener('click', () => { audio.sfxClick(); togglePause(false); });
+document.getElementById('pauseMenuBtn').addEventListener('click', () => { audio.sfxClick(); togglePause(false); showMenu(); });
+document.getElementById('restartBtn').addEventListener('click', () => { audio.sfxClick(); newGame(); });
+document.getElementById('gameOverMenuBtn').addEventListener('click', () => { audio.sfxClick(); showMenu(); });
+
+const soundToggle = document.getElementById('soundToggle');
+const musicToggle = document.getElementById('musicToggle');
+const soundVolume = document.getElementById('soundVolume');
+const musicVolume = document.getElementById('musicVolume');
+
+soundToggle.checked = audio.soundEnabled;
+musicToggle.checked = audio.musicEnabled;
+soundVolume.value = Math.round(audio.soundVolume * 100);
+musicVolume.value = Math.round(audio.musicVolume * 100);
+soundVolume.disabled = !audio.soundEnabled;
+musicVolume.disabled = !audio.musicEnabled;
+
+soundToggle.addEventListener('change', () => {
+    audio.start();
+    audio.setSoundEnabled(soundToggle.checked);
+    soundVolume.disabled = !soundToggle.checked;
+    if (soundToggle.checked) audio.sfxClick();
+});
+musicToggle.addEventListener('change', () => {
+    audio.start();
+    audio.setMusicEnabled(musicToggle.checked);
+    musicVolume.disabled = !musicToggle.checked;
+});
+soundVolume.addEventListener('input', () => {
+    audio.setSoundVolume(soundVolume.value / 100);
+});
+soundVolume.addEventListener('change', () => { audio.sfxClick(); });
+musicVolume.addEventListener('input', () => {
+    audio.setMusicVolume(musicVolume.value / 100);
+});
+
+// ============================================================
+// 6. УПРАВЛЕНИЕ (клавиатура + сенсор/мышь)
+// ============================================================
+document.addEventListener('keydown', (e) => {
+    if (['ArrowLeft','ArrowRight',' ','ArrowUp'].includes(e.key)) e.preventDefault();
+    if (!game) return;
+    if (e.key === 'ArrowLeft') game.keyDown('left');
+    if (e.key === 'ArrowRight') game.keyDown('right');
+    if (e.key === ' ' || e.key === 'ArrowUp') game.keyDown('jump');
+    if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+        if (!gameScreen.classList.contains('hidden') && !gameOverlay.classList.contains('hidden') === false) {
+            togglePause();
+        }
     }
 });
+document.addEventListener('keyup', (e) => {
+    if (!game) return;
+    if (e.key === 'ArrowLeft') game.keyUp('left');
+    if (e.key === 'ArrowRight') game.keyUp('right');
+});
+
+function bindHold(el, downFn, upFn) {
+    const down = (e) => { e.preventDefault(); el.classList.add('pressed'); downFn(); };
+    const up = (e) => { e.preventDefault(); el.classList.remove('pressed'); upFn(); };
+    el.addEventListener('touchstart', down, { passive: false });
+    el.addEventListener('touchend', up, { passive: false });
+    el.addEventListener('touchcancel', up, { passive: false });
+    el.addEventListener('mousedown', down);
+    el.addEventListener('mouseup', up);
+    el.addEventListener('mouseleave', up);
+}
+bindHold(document.getElementById('leftBtn'), () => game && game.keyDown('left'), () => game && game.keyUp('left'));
+bindHold(document.getElementById('rightBtn'), () => game && game.keyDown('right'), () => game && game.keyUp('right'));
+bindHold(document.getElementById('jumpBtn'), () => game && game.keyDown('jump'), () => {});
+    
+
+
+// ============================================================
+// 7. ЗАПУСК
+// ============================================================
+showMenu();
+gameLoop();
 </script>
 </body>
 </html>
+
+
+
+
+
+
+    
