@@ -73,13 +73,6 @@
             font-size: 16px;
             font-weight: bold;
         }
-        .ctrl-btn.reward {
-            background: #f5a623;
-            width: auto;
-            padding: 0 16px;
-            font-size: 14px;
-            border-radius: 30px;
-        }
         @media (max-width: 450px) {
             .ctrl-btn { width: 50px; height: 50px; font-size: 24px; }
             .ctrl-btn.jump { width: 70px; font-size: 14px; }
@@ -150,21 +143,18 @@
         <button class="ctrl-btn" id="leftBtn">◀</button>
         <button class="ctrl-btn jump" id="jumpBtn">ПРЫГ</button>
         <button class="ctrl-btn" id="rightBtn">▶</button>
-        <button class="ctrl-btn reward" id="rewardBtn">🎁 БОНУС</button>
     </div>
 </div>
 
-<script src="https://yandex.ru/games/sdk/v2/sdk.js"></script>
 <script>
 // ============================================================
-// 1. ИНИЦИАЛИЗАЦИЯ ИГРЫ
+// 1. ИНИЦИАЛИЗАЦИЯ
 // ============================================================
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const W = 400, H = 600;
 const CELL = 30;
 
-// DOM
 const scoreSpan = document.getElementById('scoreDisplay');
 const recordSpan = document.getElementById('recordDisplay');
 const finalScoreSpan = document.getElementById('finalScore');
@@ -173,7 +163,6 @@ const overlay = document.getElementById('gameOverlay');
 const restartBtn = document.getElementById('restartBtn');
 
 let game = null;
-let ysdk = null;
 let record = parseInt(localStorage.getItem('builderRecord')) || 0;
 recordSpan.textContent = record;
 
@@ -182,7 +171,6 @@ recordSpan.textContent = record;
 // ============================================================
 class Game {
     constructor() {
-        // Игрок
         this.player = {
             x: W/2 - 12,
             y: H - 60 - 34,
@@ -193,18 +181,17 @@ class Game {
             onGround: true,
             facing: 1,
             frame: 0,
-            jumpCount: 0,
         };
         this.cubes = [];          // падающие
-        this.staticCubes = [];    // упавшие
-        this.grabs = [];          // хваталки
+        this.staticCubes = [];    // упавшие на землю
+        this.grabs = [];
         this.score = 0;
         this.gameOver = false;
         this.time = 0;
-        this.grabSpeed = 1.5;
-        this.dropInterval = 80;   // кадров между сбросами
+        this.grabSpeed = 1.2;
+        this.dropInterval = 60;    // кадров между сбросами
         this.grabCount = 1;
-        this.nextGrabAdd = 15;    // секунд до добавления хваталки
+        this.nextGrabAdd = 15;     // секунд до добавления хваталки
         this.timer = 0;
         this.keys = { left: false, right: false };
         this.initGrabs();
@@ -212,18 +199,16 @@ class Game {
 
     initGrabs() {
         this.grabs = [];
-        const yPos = 40;
         for (let i = 0; i < this.grabCount; i++) {
             const spacing = W / (this.grabCount + 1);
-            // Начальная позиция: за левым краем, движется вправо
-            const startX = -30 - i * 20;
+            // Стартуем слева за экраном
             this.grabs.push({
-                x: startX,
-                y: yPos + i * 10,
+                x: -30 - i * 20,
+                y: 30 + i * 10,
                 w: 30,
-                h: 20,
+                h: 16,
                 speed: this.grabSpeed + i * 0.2,
-                dir: 1, // 1 = вправо, -1 = влево
+                dir: 1,
                 cooldown: 60 + Math.random() * 100,
                 timer: 0,
             });
@@ -236,13 +221,14 @@ class Game {
         this.player.vx = 0;
         this.player.vy = 0;
         this.player.onGround = true;
+        this.player.frame = 0;
         this.cubes = [];
         this.staticCubes = [];
         this.score = 0;
         this.gameOver = false;
         this.time = 0;
-        this.grabSpeed = 1.5;
-        this.dropInterval = 80;
+        this.grabSpeed = 1.2;
+        this.dropInterval = 60;
         this.grabCount = 1;
         this.nextGrabAdd = 15;
         this.timer = 0;
@@ -251,13 +237,13 @@ class Game {
         updateUI();
     }
 
-    // Управление
+    // --- Управление ---
     keyDown(key) {
         if (key === 'left') this.keys.left = true;
         if (key === 'right') this.keys.right = true;
         if (key === 'jump') {
             if (this.player.onGround && !this.gameOver) {
-                this.player.vy = -7.2; // высота прыжка ≈ 1 кубик
+                this.player.vy = -7.2;
                 this.player.onGround = false;
             }
         }
@@ -267,12 +253,13 @@ class Game {
         if (key === 'right') this.keys.right = false;
     }
 
+    // --- Обновление ---
     update() {
         if (this.gameOver) return;
         this.time += 1/60;
         this.timer++;
 
-        // --- Движение игрока ---
+        // 1. Движение игрока
         const accel = 0.5;
         const maxSpeed = 3.8;
         if (this.keys.left) {
@@ -287,21 +274,21 @@ class Game {
             this.player.vx *= 0.85;
             if (Math.abs(this.player.vx) < 0.1) this.player.vx = 0;
         }
-        // Анимация ходьбы
         if (Math.abs(this.player.vx) > 0.3) {
             this.player.frame += 0.15;
         } else {
             this.player.frame = 0;
         }
 
-        // Гравитация и прыжок
+        // Гравитация
         this.player.vy += 0.45;
         if (this.player.vy > 8) this.player.vy = 8;
 
+        // Перемещение
         this.player.x += this.player.vx;
         this.player.y += this.player.vy;
 
-        // Границы по X
+        // Границы X
         if (this.player.x < 0) this.player.x = 0;
         if (this.player.x + this.player.w > W) this.player.x = W - this.player.w;
 
@@ -314,23 +301,40 @@ class Game {
             this.player.onGround = false;
         }
 
-        // --- Хваталки ---
+        // --- Взаимодействие со статичными кубиками (толкание) ---
+        // Если игрок движется в сторону кубика, пытаемся сдвинуть кубик
+        for (let s of this.staticCubes) {
+            // Проверяем столкновение игрока с кубиком
+            if (this.player.x < s.x + s.w && this.player.x + this.player.w > s.x &&
+                this.player.y < s.y + s.h && this.player.y + this.player.h > s.y) {
+                // Определяем направление толчка: если игрок движется вправо и находится левее кубика
+                if (this.player.vx > 0 && this.player.x + this.player.w - s.x < 8) {
+                    // Толкаем кубик вправо
+                    const newX = s.x + this.player.vx;
+                    // Проверяем, не выйдет ли кубик за границу или не столкнётся с другим
+                    if (newX + s.w <= W && !this.staticCubes.some(other => other !== s && newX < other.x + other.w && newX + s.w > other.x)) {
+                        s.x = newX;
+                    }
+                } else if (this.player.vx < 0 && s.x + s.w - this.player.x < 8) {
+                    // Толкаем влево
+                    const newX = s.x + this.player.vx;
+                    if (newX >= 0 && !this.staticCubes.some(other => other !== s && newX < other.x + other.w && newX + s.w > other.x)) {
+                        s.x = newX;
+                    }
+                }
+            }
+        }
+
+        // 2. Хваталки
         for (let g of this.grabs) {
             g.x += g.speed * g.dir;
-            // Если ушёл за правый край, меняем направление влево
-            if (g.x > W + 20) {
-                g.dir = -1;
-            }
-            // Если ушёл за левый край, меняем направление вправо
-            if (g.x < -30) {
-                g.dir = 1;
-            }
-            // Сброс кубика
+            if (g.x > W + 20) g.dir = -1;
+            if (g.x < -30) g.dir = 1;
+
             g.timer++;
             if (g.timer >= g.cooldown) {
                 g.timer = 0;
                 g.cooldown = Math.max(25, this.dropInterval + Math.random() * 60);
-                // Сбрасываем кубик в текущей позиции хваталки
                 this.cubes.push({
                     x: g.x + g.w/2 - 12,
                     y: g.y + g.h,
@@ -341,7 +345,7 @@ class Game {
             }
         }
 
-        // --- Падение кубиков ---
+        // 3. Падение кубиков
         for (let i = this.cubes.length-1; i >= 0; i--) {
             const c = this.cubes[i];
             c.y += c.vy;
@@ -349,7 +353,8 @@ class Game {
             if (c.vy > 5) c.vy = 5;
 
             // Столкновение с игроком
-            if (!this.gameOver && this.checkCollision(this.player, c)) {
+            if (!this.gameOver && this.player.x < c.x + c.w && this.player.x + this.player.w > c.x &&
+                this.player.y < c.y + c.h && this.player.y + this.player.h > c.y) {
                 // Если игрок движется вверх и касается кубика снизу (бьёт головой)
                 if (this.player.vy < 0 && (this.player.y + this.player.h - c.y) < 12) {
                     // Разбиваем кубик
@@ -365,9 +370,8 @@ class Game {
                 }
             }
 
-            // Проверка достижения земли или статичных кубиков
+            // Приземление на пол или на другие кубики
             let landed = false;
-            // Пол
             if (c.y + c.h >= H - 10) {
                 this.staticCubes.push({ x: c.x, y: H - 10 - c.h, w: c.w, h: c.h });
                 this.cubes.splice(i, 1);
@@ -375,7 +379,6 @@ class Game {
                 landed = true;
                 continue;
             }
-            // Столкновение с другими статичными кубиками
             for (let s of this.staticCubes) {
                 if (c.x < s.x + s.w && c.x + c.w > s.x &&
                     c.y + c.h >= s.y && c.y + c.h <= s.y + 8) {
@@ -389,15 +392,14 @@ class Game {
             if (landed) continue;
         }
 
-        // --- Увеличение сложности ---
+        // 4. Сложность
         if (this.time > this.nextGrabAdd && this.grabCount < 4) {
             this.grabCount++;
             this.nextGrabAdd += 18 + Math.random() * 10;
             this.grabSpeed += 0.3;
             this.dropInterval = Math.max(25, this.dropInterval - 5);
-            this.initGrabs(); // пересоздаём все хваталки
+            this.initGrabs();
         }
-        // Постепенное увеличение скорости хваталок
         if (this.time % 4 < 0.02) {
             this.grabSpeed += 0.03;
             for (let g of this.grabs) {
@@ -406,11 +408,6 @@ class Game {
         }
 
         updateUI();
-    }
-
-    checkCollision(a, b) {
-        return a.x < b.x + b.w && a.x + a.w > b.x &&
-               a.y < b.y + b.h && a.y + a.h > b.y;
     }
 
     // --- Проверка линий (Тетрис) ---
@@ -424,7 +421,6 @@ class Game {
         let linesCleared = 0;
         for (let y in rows) {
             const cubes = rows[y];
-            // Проверяем, покрывают ли кубики всю ширину (с шагом 2 для точности)
             const coverage = new Array(W).fill(false);
             for (let c of cubes) {
                 for (let x = Math.floor(c.x); x < Math.ceil(c.x + c.w); x++) {
@@ -436,10 +432,8 @@ class Game {
                 if (!coverage[x]) { full = false; break; }
             }
             if (full) {
-                // Удаляем все кубики в этой строке
                 this.staticCubes = this.staticCubes.filter(s => Math.round(s.y) !== parseInt(y));
                 linesCleared++;
-                // Смещаем кубики выше вниз
                 for (let s of this.staticCubes) {
                     if (s.y < parseInt(y)) s.y += 30;
                 }
@@ -479,19 +473,23 @@ class Game {
         }
         ctx.shadowBlur = 0;
 
-        // Хваталки
+        // Хваталки и канаты
         for (let g of this.grabs) {
-            ctx.fillStyle = '#888';
-            ctx.fillRect(g.x, g.y, g.w, g.h);
-            ctx.fillStyle = '#aaa';
-            ctx.fillRect(g.x+2, g.y+2, g.w-4, g.h-4);
-            // Трос
-            ctx.strokeStyle = '#666';
+            // Рисуем канат (линия от верха до хваталки)
+            ctx.strokeStyle = '#888';
             ctx.lineWidth = 2;
+            ctx.setLineDash([4, 6]);
             ctx.beginPath();
             ctx.moveTo(g.x + g.w/2, 0);
             ctx.lineTo(g.x + g.w/2, g.y);
             ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Сама хваатлка
+            ctx.fillStyle = '#888';
+            ctx.fillRect(g.x, g.y, g.w, g.h);
+            ctx.fillStyle = '#aaa';
+            ctx.fillRect(g.x+2, g.y+2, g.w-4, g.h-4);
             // Крюк
             ctx.fillStyle = '#555';
             ctx.fillRect(g.x + g.w/2 - 3, g.y + g.h-2, 6, 4);
@@ -560,9 +558,6 @@ class Game {
         if (this.score > record) {
             record = this.score;
             localStorage.setItem('builderRecord', record);
-            if (ysdk) {
-                ysdk.leaderboard.setScore('builder', record).catch(e => console.warn('LB error', e));
-            }
         }
         finalRecordSpan.textContent = record;
         recordSpan.textContent = record;
@@ -581,7 +576,8 @@ function updateUI() {
 }
 
 // ============================================================
-// 4. УПРАВЛЕНИЕ (клавиатура + сенсор)
+
+    // 4. УПРАВЛЕНИЕ
 // ============================================================
 document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft') { e.preventDefault(); if (game) game.keyDown('left'); }
@@ -593,47 +589,24 @@ document.addEventListener('keyup', (e) => {
     if (e.key === 'ArrowRight') { e.preventDefault(); if (game) game.keyUp('right'); }
 });
 
-['leftBtn','rightBtn','jumpBtn'].forEach(id => {
-    const el = document.getElementById(id);
-    const key = id.replace('Btn','');
-    el.addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown(key); });
-    el.addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp(key); });
-    el.addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown(key); });
-    el.addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp(key); });
-});
-// Прыжок – отдельно для корректной работы удержания
+// Кнопки
+document.getElementById('leftBtn').addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown('left'); });
+document.getElementById('leftBtn').addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp('left'); });
+document.getElementById('leftBtn').addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown('left'); });
+document.getElementById('leftBtn').addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp('left'); });
+
+document.getElementById('rightBtn').addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown('right'); });
+document.getElementById('rightBtn').addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp('right'); });
+document.getElementById('rightBtn').addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown('right'); });
+document.getElementById('rightBtn').addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp('right'); });
+
 document.getElementById('jumpBtn').addEventListener('touchstart', e => { e.preventDefault(); if (game) game.keyDown('jump'); });
 document.getElementById('jumpBtn').addEventListener('touchend', e => { e.preventDefault(); if (game) game.keyUp('jump'); });
 document.getElementById('jumpBtn').addEventListener('mousedown', e => { e.preventDefault(); if (game) game.keyDown('jump'); });
 document.getElementById('jumpBtn').addEventListener('mouseup', e => { e.preventDefault(); if (game) game.keyUp('jump'); });
 
-restartBtn.addEventListener('click', () => { if (game) game.reset(); });
-
 // ============================================================
-// 5. БОНУСНАЯ РЕКЛАМА (Яндекс SDK)
-// ============================================================
-document.getElementById('rewardBtn').addEventListener('click', () => {
-    if (!ysdk) {
-        alert('SDK пока не загружен, но +5 очков зачислено!');
-        if (game && !game.gameOver) { game.score += 5; updateUI(); }
-        return;
-    }
-    ysdk.adv.showRewarded({
-        callbacks: {
-            onRewarded: () => {
-                if (game && !game.gameOver) {
-                    game.score += 5;
-                    updateUI();
-                    alert('🎉 +5 очков!');
-                }
-            },
-            onClose: () => console.log('Реклама закрыта')
-        }
-    }).catch(e => console.warn('Реклама не показана', e));
-});
-
-// ============================================================
-// 6. ЗАПУСК ИГРЫ
+// 5. ЗАПУСК
 // ============================================================
 function startGame() {
     game = new Game();
@@ -643,7 +616,7 @@ function startGame() {
             game.update();
             game.draw();
         } catch (e) {
-            console.error('Ошибка в игровом цикле:', e);
+            console.error(e);
         }
         requestAnimationFrame(gameLoop);
     }
@@ -652,28 +625,14 @@ function startGame() {
 
 startGame();
 
-// ============================================================
-// 7. ПОДКЛЮЧЕНИЕ YANDEX SDK (асинхронно)
-// ============================================================
-YaGames.init()
-    .then(sdk => {
-        ysdk = sdk;
-        console.log('✅ Яндекс SDK готов');
-        return ysdk.leaderboard.getLeaderboardEntries('builder', { quantityTop: 1 });
-    })
-    .then(data => {
-        if (data && data.length > 0) {
-            record = data[0].score;
-        } else {
-            record = parseInt(localStorage.getItem('builderRecord')) || 0;
-        }
-        recordSpan.textContent = record;
-    })
-    .catch(err => {
-        console.warn('⚠️ SDK работает в офлайне:', err);
-        record = parseInt(localStorage.getItem('builderRecord')) || 0;
-        recordSpan.textContent = record;
-    });
+// Кнопка рестарта
+restartBtn.addEventListener('click', () => {
+    if (game) {
+        game.reset();
+    } else {
+        startGame();
+    }
+});
 </script>
 </body>
 </html>
