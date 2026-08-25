@@ -662,18 +662,22 @@ class Game {
         } else {
             // Нужно упасть на несколько ярусов вниз — не телепортируем, а отдаём коробку
             // в общий цикл падения, чтобы она плавно съехала под гравитацией, как обычный кубик.
+            // graceFrames — короткая "неуязвимость": в момент толчка тело игрока ещё пересекается
+            // с этой коробкой (это и было условием толчка), поэтому без задержки падающий кубик
+            // мгновенно засчитывал бы столкновение и убивал игрока прямо на месте толчка.
             this.cubes.push({
                 col: toCol,
                 x: this.colX(toCol),
                 y: cube.y,      // стартует с текущей высоты и падает оттуда
                 w: this.cubeSize, h: this.cubeSize,
                 vy: 0.6,
+                graceFrames: 14,
             });
         }
         return true;
     }
 
-    // --- Столкновения игрока с коробками: толчок ровно на 1 слот, либо жёсткая стена ---
+   // --- Столкновения игрока с коробками: толчок ровно на 1 слот, либо жёсткая стена ---
     resolveCubeCollisions() {
         if (this.pushCooldown > 0) this.pushCooldown--;
         for (let c = 0; c < this.COLS; c++) {
@@ -745,7 +749,7 @@ class Game {
 
         this.player.y += this.player.vy;
 
-// Пол
+        // Пол
         if (this.player.y + this.player.h >= this.floorY) {
             this.player.y = this.floorY - this.player.h;
             if (this.player.vy > 3 && !wasOnGround) audio.sfxLand();
@@ -768,8 +772,7 @@ class Game {
                 }
             }
         }
-
-        // 2. Краны: едут один проезд, несут один блок, сбрасывают его один раз,
+       // 2. Краны: едут один проезд, несут один блок, сбрасывают его один раз,
         //    уезжают за экран и возвращаются с новым блоком.
         this.speedMulTimer++;
         if (this.speedMulTimer >= 300) {           // раз в 5 секунд — очень плавный общий разгон
@@ -811,11 +814,16 @@ class Game {
             c.y += c.vy;
             c.vy = Math.min(c.vy + 0.12, 6);
 
+            const inGrace = c.graceFrames > 0;
+            if (c.graceFrames > 0) c.graceFrames--;
+
             // Столкновение с игроком: если грузчик в прыжке (не на земле) — разбивает коробку.
             // Если он идёт или стоит на земле — коробка убивает.
+            // Кубик, который только что сам столкнул игрок (graceFrames), пока не может его задеть —
+            // иначе игрок, стоящий на коробке и толкнувший верхнюю соседнюю вниз, умирал бы мгновенно.
             const overlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
             const overlapY = this.player.y < c.y + c.h - 3 && this.player.y + this.player.h > c.y + 3;
-            if (!this.gameOver && overlapX && overlapY) {
+            if (!this.gameOver && !inGrace && overlapX && overlapY) {
                 if (!this.player.onGround) {
                     this.cubes.splice(i, 1);
                     this.score += 5;
@@ -871,8 +879,7 @@ class Game {
 
         updateUI();
     }
-
-    // --- Проверка линий (Тетрис): ряд полон, если во ВСЕХ колонках есть коробка на этой высоте ---
+   // --- Проверка линий (Тетрис): ряд полон, если во ВСЕХ колонках есть коробка на этой высоте ---
     checkLines() {
         let maxHeight = 0;
         for (let c = 0; c < this.COLS; c++) maxHeight = Math.max(maxHeight, this.columns[c].length);
@@ -910,8 +917,8 @@ class Game {
         audio.sfxLine(n);
         updateUI();
     }
-   
-spawnParticles(x, y, color) {
+
+    spawnParticles(x, y, color) {
         for (let i = 0; i < 10; i++) {
             this.particles.push({
                 x, y,
@@ -1014,21 +1021,24 @@ spawnParticles(x, y, color) {
             const armH = bs * 0.7;
             const armY = by + bs * 0.1;
             const gap = 1 + gripOpen * 7; // расстояние между щупом и краем блока/его позицией
+            const leftArmX = bx - gap - armW;
+            const rightArmX = bx + bs + gap;
 
-            // Соединитель: жёстко скрепляет низ крана с верхом щупов, чтобы не было разрыва —
-            // щупы визуально являются частью того же механизма, что и крюк.
+            // Перекладина (ярмо): физически тянется от левого щупа до правого и растягивается
+            // вместе с их раздвижением, так что щупы и кран всегда выглядят единым механизмом
+            // без зазоров, в любой момент анимации.
             ctx.fillStyle = '#777';
-            ctx.fillRect(g.x + g.w/2 - 3, g.y + g.h, 6, Math.max(1, armY - (g.y + g.h)));
+            ctx.fillRect(leftArmX, g.y + g.h, (rightArmX + armW) - leftArmX, armY - (g.y + g.h) + 3);
 
             ctx.fillStyle = '#6b6b6b';
             // левый щуп
-            ctx.fillRect(bx - gap - armW, armY, armW, armH);
+            ctx.fillRect(leftArmX, armY, armW, armH);
             // правый щуп
-            ctx.fillRect(bx + bs + gap, armY, armW, armH);
+            ctx.fillRect(rightArmX, armY, armW, armH);
             // "пальцы" на концах щупов, повторяющие нижний контур блока
             ctx.fillStyle = '#808080';
-            ctx.fillRect(bx - gap - armW, armY + armH - 4, armW + 4, 4);
-            ctx.fillRect(bx + bs + gap - 4, armY + armH - 4, armW + 4, 4);
+            ctx.fillRect(leftArmX, armY + armH - 4, armW + 4, 4);
+            ctx.fillRect(rightArmX - 4, armY + armH - 4, armW + 4, 4);
 
             // сам блок — только пока кран его держит
             if (g.hasBlock) {
@@ -1038,8 +1048,7 @@ spawnParticles(x, y, color) {
                 ctx.fillRect(bx + 3, by + 3, bs - 6, bs - 6);
             }
         }
-
-        // частицы
+       // частицы
         for (let p of this.particles) {
             ctx.globalAlpha = Math.max(0, p.life / 30);
             ctx.fillStyle = p.color;
@@ -1102,7 +1111,8 @@ spawnParticles(x, y, color) {
         gameOverlay.classList.remove('hidden');
     }
 }
-   // ============================================================
+
+// ============================================================
 // 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================================
 function updateUI() {
@@ -1264,8 +1274,3 @@ gameLoop();
 </script>
 </body>
 </html>
-
-
-
-
-   
