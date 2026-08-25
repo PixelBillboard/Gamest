@@ -596,7 +596,7 @@ class Game {
         const dir = Math.random() < 0.5 ? 1 : -1;
         return {
             lane,
-            y: 26 + lane * 14,
+            y: 34, // все краны строго на одной горизонтальной линии
             w: 30, h: 16,
             x: dir === 1 ? -40 : W + 40,
             dir,
@@ -637,14 +637,21 @@ class Game {
     rowY(row) { return this.floorY - (row + 1) * this.cubeSize; }
 
     // --- Попытка толкнуть верхнюю коробку колонки fromCol на 1 слот в сторону dir ---
+    // Коробку можно толкнуть только вбок вдоль её собственного уровня — она может при этом
+    // упасть НИЖЕ (если в соседней колонке стопка короче), но никогда не встать выше
+    // (залезть на другую коробку). Если в целевой колонке уже есть коробка на её уровне
+    // или выше — это стена, толкать нельзя.
     attemptPush(fromCol, dir) {
         const toCol = fromCol + dir;
         if (toCol < 0 || toCol >= this.COLS) return false;
-        if (this.columns[fromCol].length === 0) return false;
-        if (this.columns[toCol].length >= this.MAX_ROWS) return false;
-        const cube = this.columns[fromCol].pop();
+        const stack = this.columns[fromCol];
+        if (stack.length === 0) return false;
+        const cube = stack[stack.length - 1];
+        const destHeight = this.columns[toCol].length;
+        if (destHeight > cube.row) return false; // там уже что-то на этом уровне или выше — нельзя подняться
+        stack.pop();
         cube.col = toCol;
-        cube.row = this.columns[toCol].length;
+        cube.row = destHeight; // остаётся на том же уровне либо падает ниже, но не выше
         cube.x = this.colX(toCol);
         cube.y = this.rowY(cube.row);
         this.columns[toCol].push(cube);
@@ -783,19 +790,20 @@ class Game {
                 g.hasBlock = true;
                 g.dropAtX = this.randomDropX(newDir);
             }
-           }
-   // 3. Падение кубиков (x зафиксирован по колонке — наложений быть не может)
+        }
+
+        // 3. Падение кубиков (x зафиксирован по колонке — наложений быть не может)
         for (let i = this.cubes.length - 1; i >= 0; i--) {
             const c = this.cubes[i];
             c.y += c.vy;
             c.vy = Math.min(c.vy + 0.12, 6);
 
-            // Столкновение с игроком
+            // Столкновение с игроком: если грузчик в прыжке (не на земле) — разбивает коробку.
+            // Если он идёт или стоит на земле — коробка убивает.
             const overlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
             const overlapY = this.player.y < c.y + c.h - 3 && this.player.y + this.player.h > c.y + 3;
             if (!this.gameOver && overlapX && overlapY) {
-                const headButt = this.player.vy < -1 && (this.player.y - c.y - c.h) > -14 && this.player.y < c.y + c.h/2;
-                if (headButt) {
+                if (!this.player.onGround) {
                     this.cubes.splice(i, 1);
                     this.score += 5;
                     this.player.vy = 2.2;
@@ -947,13 +955,13 @@ class Game {
         }
         ctx.shadowBlur = 0;
 
-        // падающие кубики
+        // падающие кубики — тот же цвет, что и у стоящих (не индикатор опасности)
         ctx.shadowBlur = 8;
-        ctx.shadowColor = '#ff6b6b66';
+        ctx.shadowColor = '#00000055';
         for (let c of this.cubes) {
-            ctx.fillStyle = '#ff6b6b';
+            ctx.fillStyle = '#e0a060';
             ctx.fillRect(c.x, c.y, c.w, c.h);
-            ctx.fillStyle = '#ff3b3b';
+            ctx.fillStyle = '#c08040';
             ctx.fillRect(c.x + 3, c.y + 3, c.w - 6, c.h - 6);
         }
         ctx.shadowBlur = 0;
@@ -975,43 +983,45 @@ class Game {
             ctx.fillStyle = '#555';
             ctx.fillRect(g.x + g.w/2 - 3, g.y + g.h - 2, 6, 4);
 
-            // Блок, который кран пока несёт: размер = реальному размеру коробки (bug fix — раньше был другой размер).
-            // Два механических щупа-держателя слева и справа обхватывают блок по контуру,
-            // а перед сбросом слегка раздвигаются, отпуская его.
+            // Клешни-щупы — постоянная часть крана (не пропадают после отпускания блока).
+            // Когда блок есть — плотно обхватывают его; когда блока нет — остаются разведёнными
+            // (пустой раскрытый захват), пока не подхватят новый блок.
+            const bs = this.cubeSize;
+            const bx = g.x + g.w/2 - bs/2, by = g.y + g.h + 2;
+
+            let gripOpen;
+            if (g.hasBlock && !g.dropped) {
+                const anticipation = 22;
+                const dist = Math.abs(g.x - g.dropAtX);
+                gripOpen = dist < anticipation ? 1 - dist / anticipation : 0; // 0 = держит крепко
+            } else {
+                gripOpen = 1; // блока нет — щупы разведены
+            }
+            const armW = 4;
+            const armH = bs * 0.7;
+            const armY = by + bs * 0.1;
+            const gap = 1 + gripOpen * 7; // расстояние между щупом и краем блока/его позицией
+
+            ctx.fillStyle = '#6b6b6b';
+            // левый щуп
+            ctx.fillRect(bx - gap - armW, armY, armW, armH);
+            // правый щуп
+            ctx.fillRect(bx + bs + gap, armY, armW, armH);
+            // "пальцы" на концах щупов, повторяющие нижний контур блока
+            ctx.fillStyle = '#808080';
+            ctx.fillRect(bx - gap - armW, armY + armH - 4, armW + 4, 4);
+            ctx.fillRect(bx + bs + gap - 4, armY + armH - 4, armW + 4, 4);
+
+            // сам блок — только пока кран его держит
             if (g.hasBlock) {
-                const bs = this.cubeSize;
-                const bx = g.x + g.w/2 - bs/2, by = g.y + g.h + 2;
-
-                // насколько щупы раскрыты: 0 = плотно держат, 1 = полностью разжаты (у точки сброса)
-                let gripOpen = 0;
-                if (!g.dropped) {
-                    const anticipation = 22;
-                    const dist = Math.abs(g.x - g.dropAtX);
-                    if (dist < anticipation) gripOpen = 1 - dist / anticipation;
-                }
-                const armW = 4;
-                const armH = bs * 0.7;
-                const armY = by + bs * 0.1;
-                const gap = 1 + gripOpen * 7; // расстояние между щупом и краем блока
-
-                ctx.fillStyle = '#6b6b6b';
-                // левый щуп (обхватывает левый край блока)
-                ctx.fillRect(bx - gap - armW, armY, armW, armH);
-                // правый щуп (обхватывает правый край блока)
-                ctx.fillRect(bx + bs + gap, armY, armW, armH);
-                // "пальцы" на концах щупов, повторяющие нижний контур блока
-                ctx.fillStyle = '#808080';
-                ctx.fillRect(bx - gap - armW, armY + armH - 4, armW + 4, 4);
-                ctx.fillRect(bx + bs + gap - 4, armY + armH - 4, armW + 4, 4);
-
-                // сам блок
                 ctx.fillStyle = '#e0a060';
                 ctx.fillRect(bx, by, bs, bs);
                 ctx.fillStyle = '#c08040';
                 ctx.fillRect(bx + 3, by + 3, bs - 6, bs - 6);
             }
-    }
-       // частицы
+        }
+
+        // частицы
         for (let p of this.particles) {
             ctx.globalAlpha = Math.max(0, p.life / 30);
             ctx.fillStyle = p.color;
@@ -1190,7 +1200,7 @@ musicVolume.addEventListener('input', () => {
     audio.setMusicVolume(musicVolume.value / 100);
 });
 
-   // ============================================================
+// ============================================================
 // 6. УПРАВЛЕНИЕ (клавиатура + сенсор/мышь)
 // ============================================================
 document.addEventListener('keydown', (e) => {
