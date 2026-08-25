@@ -558,7 +558,8 @@ class Game {
             x: W/2 - 12, y: this.floorY - playerH, w: 24, h: playerH,
             vx: 0, vy: 0, onGround: true, facing: 1, frame: 0,
         };
-        this.cubes = [];        // падающие (ещё не в сетке)
+
+   this.cubes = [];        // падающие (ещё не в сетке)
         this.grabs = [];
         this.particles = [];
         this.score = 0;
@@ -662,21 +663,20 @@ class Game {
         } else {
             // Нужно упасть на несколько ярусов вниз — не телепортируем, а отдаём коробку
             // в общий цикл падения, чтобы она плавно съехала под гравитацией, как обычный кубик.
-            // graceFrames — короткая "неуязвимость": в момент толчка тело игрока ещё пересекается
-            // с этой коробкой (это и было условием толчка), поэтому без задержки падающий кубик
-            // мгновенно засчитывал бы столкновение и убивал игрока прямо на месте толчка.
+            // pushedFall = true: такая коробка НИКОГДА не взаимодействует с игроком (не убивает
+            // и не разбивается от прыжка) — физически она падает вбок/вниз от места толчка,
+            // а не сверху на персонажа, поэтому не может представлять для него угрозу.
             this.cubes.push({
                 col: toCol,
                 x: this.colX(toCol),
                 y: cube.y,      // стартует с текущей высоты и падает оттуда
                 w: this.cubeSize, h: this.cubeSize,
                 vy: 0.6,
-                graceFrames: 14,
+                pushedFall: true,
             });
         }
         return true;
     }
-
    // --- Столкновения игрока с коробками: толчок ровно на 1 слот, либо жёсткая стена ---
     resolveCubeCollisions() {
         if (this.pushCooldown > 0) this.pushCooldown--;
@@ -772,7 +772,8 @@ class Game {
                 }
             }
         }
-       // 2. Краны: едут один проезд, несут один блок, сбрасывают его один раз,
+
+        // 2. Краны: едут один проезд, несут один блок, сбрасывают его один раз,
         //    уезжают за экран и возвращаются с новым блоком.
         this.speedMulTimer++;
         if (this.speedMulTimer >= 300) {           // раз в 5 секунд — очень плавный общий разгон
@@ -814,27 +815,27 @@ class Game {
             c.y += c.vy;
             c.vy = Math.min(c.vy + 0.12, 6);
 
-            const inGrace = c.graceFrames > 0;
-            if (c.graceFrames > 0) c.graceFrames--;
-
             // Столкновение с игроком: если грузчик в прыжке (не на земле) — разбивает коробку.
             // Если он идёт или стоит на земле — коробка убивает.
-            // Кубик, который только что сам столкнул игрок (graceFrames), пока не может его задеть —
-            // иначе игрок, стоящий на коробке и толкнувший верхнюю соседнюю вниз, умирал бы мгновенно.
-            const overlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
-            const overlapY = this.player.y < c.y + c.h - 3 && this.player.y + this.player.h > c.y + 3;
-            if (!this.gameOver && !inGrace && overlapX && overlapY) {
-                if (!this.player.onGround) {
-                    this.cubes.splice(i, 1);
-                    this.score += 5;
-                    this.player.vy = 2.2;
-                    this.spawnParticles(c.x + c.w/2, c.y + c.h/2);
-                    audio.sfxBreak();
-                    updateUI();
-                    continue;
-                } else {
-                    this.triggerGameOver();
-                    return;
+            // Коробка, толкнутая самим игроком (pushedFall), никогда не считается столкновением —
+            // физически она падает вбок/вниз от места толчка, а не сверху на персонажа, значит
+            // не может ни убить его, ни "разбиться от удара головой".
+            if (!c.pushedFall) {
+                const overlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
+                const overlapY = this.player.y < c.y + c.h - 3 && this.player.y + this.player.h > c.y + 3;
+                if (!this.gameOver && overlapX && overlapY) {
+                    if (!this.player.onGround) {
+                        this.cubes.splice(i, 1);
+                        this.score += 5;
+                        this.player.vy = 2.2;
+                        this.spawnParticles(c.x + c.w/2, c.y + c.h/2);
+                        audio.sfxBreak();
+                        updateUI();
+                        continue;
+                    } else {
+                        this.triggerGameOver();
+                        return;
+                    }
                 }
             }
 
@@ -879,7 +880,8 @@ class Game {
 
         updateUI();
     }
-   // --- Проверка линий (Тетрис): ряд полон, если во ВСЕХ колонках есть коробка на этой высоте ---
+
+    // --- Проверка линий (Тетрис): ряд полон, если во ВСЕХ колонках есть коробка на этой высоте ---
     checkLines() {
         let maxHeight = 0;
         for (let c = 0; c < this.COLS; c++) maxHeight = Math.max(maxHeight, this.columns[c].length);
@@ -906,7 +908,10 @@ class Game {
                 cube.row = idx;
                 cube.x = this.colX(c);
                 cube.y = this.rowY(idx);
-                if (cube.visualX === undefined) { cube.visualX = cube.x; cube.visualY = cube.y; }
+                // Позиция подтягивается мгновенно (без плавного "доезжания"), чтобы очистка
+                // ряда и сдвиг стопки вниз выглядели без задержки.
+                cube.visualX = cube.x;
+                cube.visualY = cube.y;
             });
         }
 
@@ -917,8 +922,7 @@ class Game {
         audio.sfxLine(n);
         updateUI();
     }
-
-    spawnParticles(x, y, color) {
+   spawnParticles(x, y, color) {
         for (let i = 0; i < 10; i++) {
             this.particles.push({
                 x, y,
