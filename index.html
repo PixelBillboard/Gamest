@@ -559,6 +559,7 @@ class Game {
             vx: 0, vy: 0, onGround: true, facing: 1, frame: 0,
         };
 
+
    this.cubes = [];        // падающие (ещё не в сетке)
         this.grabs = [];
         this.particles = [];
@@ -576,21 +577,38 @@ class Game {
         this.blocksDropped = 0;          // счётчик сброшенных блоков с начала игры — от него зависит появление новых кранов
         // Порог (в кол-ве сброшенных блоков), после которого появляется следующий кран.
         // Интервалы нарастают, поэтому 7-й кран появляется нескоро, а не за минуту.
-        this.craneThresholds = [0, 7, 16, 28, 44, 64, 90];
+        this.craneThresholds = [0, 8, 18, 32, 50, 74, 105];
         this.speedMul = 1;               // общий плавный рост скорости кранов со временем
         this.speedMulTimer = 0;
         this.grabs = [];
         this.grabs.push(this.spawnCrane(0, this.laneBaseSpeed(0)));
     }
 
-    // Базовая скорость крана для его "дорожки" — старт медленный, дальше чуть быстрее.
+    // Базовая скорость крана для его "дорожки". Первый кран чуть быстрее, чем раньше
+    // (чтобы не было скучно в начале), дальше разгон постепенно затухает, а после 5-го
+    // крана прирост скорости специально небольшой — чтобы к 6-7 крану на экране не был хаос.
     laneBaseSpeed(lane) {
-        return 0.55 + lane * 0.13;
+        const speeds = [0.75, 0.95, 1.10, 1.22, 1.32, 1.38, 1.42];
+        return speeds[Math.min(lane, speeds.length - 1)];
     }
 
     randomDropX(dir) {
+        // Выбираем точку сброса только среди колонок, где ещё есть запас по высоте —
+        // краны не должны целиться туда, где стопка уже почти достаёт до самого крана.
         const margin = W * 0.18;
-        return margin + Math.random() * (W - margin * 2);
+        const minX = margin, maxX = W - margin;
+        const ceiling = 14; // выше этой высоты (в кубиках) — колонка считается "слишком полной"
+        const candidates = [];
+        for (let col = 0; col < this.COLS; col++) {
+            const cx = this.colX(col) + this.cubeSize / 2;
+            if (cx < minX || cx > maxX) continue;
+            if (this.columns[col].length < ceiling) candidates.push(cx);
+        }
+        if (candidates.length === 0) {
+            // Все подходящие колонки почти заполнены — кран в этот раз просто проедет без сброса.
+            return dir === 1 ? W + 1000 : -1000;
+        }
+        return candidates[Math.floor(Math.random() * candidates.length)];
     }
 
     spawnCrane(lane, speed) {
@@ -623,7 +641,8 @@ class Game {
         if (key === 'right') this.keys.right = true;
         if (key === 'jump') {
             if (this.player.onGround) {
-                this.player.vy = -7.4;
+                // Высота прыжка подобрана так, чтобы забраться ровно на 1 ящик (не на 2, как раньше).
+                this.player.vy = -5.0;
                 this.player.onGround = false;
                 audio.sfxJump();
             }
@@ -677,41 +696,54 @@ class Game {
         }
         return true;
     }
-   // --- Столкновения игрока с коробками: толчок ровно на 1 слот, либо жёсткая стена ---
+
+    // --- Столкновения игрока с коробками: толчок ровно на 1 слот, либо жёсткая стена.
+    //     Проверяем СТРОГО ОДНУ колонку за кадр — ту, в которую игрок реально упирается по
+    //     направлению своего движения. Раньше проверялись все колонки подряд, и если толчок
+    //     передвигал коробку в колонку с бОльшим индексом, цикл через мгновение доходил и до
+    //     неё же в этом самом кадре, повторно "стеной" переставляя игрока по новой позиции —
+    //     это и вызывало телепорт/проскок вперёд. Теперь такого повторного захода в принципе
+    //     быть не может: одна проверка, одна колонка, один результат за кадр.
     resolveCubeCollisions() {
         if (this.pushCooldown > 0) this.pushCooldown--;
-        for (let c = 0; c < this.COLS; c++) {
-            const stack = this.columns[c];
-            for (let idx = 0; idx < stack.length; idx++) {
-                const cube = stack[idx];
-                const vertOverlap = this.player.y < cube.y + cube.h - 2 && this.player.y + this.player.h > cube.y + 2;
-                if (!vertOverlap) continue;
-                const horizOverlap = this.player.x < cube.x + cube.w && this.player.x + this.player.w > cube.x;
-                if (!horizOverlap) continue;
+        const dir = this.player.vx > 0.15 ? 1 : (this.player.vx < -0.15 ? -1 : 0);
+        if (dir === 0) return;
 
-                const isTop = idx === stack.length - 1;
-                const dir = this.player.vx > 0.15 ? 1 : (this.player.vx < -0.15 ? -1 : 0);
+        const leftCol = Math.floor(this.player.x / this.cubeSize);
+        const rightCol = Math.floor((this.player.x + this.player.w - 1) / this.cubeSize);
+        const checkCol = dir === 1 ? rightCol : leftCol; // край, в который упирается игрок
+        if (checkCol < 0 || checkCol >= this.COLS) return;
 
-                if (isTop && dir !== 0 && this.pushCooldown <= 0) {
-                    // толкаем только если игрок реально идёт со стороны cube в направлении dir
-                    const pushingFromLeft = dir === 1 && this.player.x + this.player.w - cube.x < this.cubeSize * 0.6;
-                    const pushingFromRight = dir === -1 && cube.x + cube.w - this.player.x < this.cubeSize * 0.6;
-                    if (pushingFromLeft || pushingFromRight) {
-                        if (this.attemptPush(c, dir)) {
-                            this.pushCooldown = 14; // задержка = толчок ровно на 1 слот за раз
-                            continue;
-                        }
-                    }
-                }
-                // стена: коробка не толкается (не верхняя, нет места, кулдаун) — блокируем игрока
-                if (this.player.x + this.player.w - cube.x < cube.w / 2) {
-                    this.player.x = cube.x - this.player.w;
-                } else {
-                    this.player.x = cube.x + cube.w;
-                }
-                this.player.vx = 0;
+        const stack = this.columns[checkCol];
+        if (stack.length === 0) return;
+
+        // Ищем коробку в этой колонке ровно на высоте игрока (может быть не только верхняя —
+        // нижняя коробка под другой стопкой тоже должна работать как стена).
+        let hitIdx = -1;
+        for (let idx = 0; idx < stack.length; idx++) {
+            const cb = stack[idx];
+            const vertOverlap = this.player.y < cb.y + cb.h - 2 && this.player.y + this.player.h > cb.y + 2;
+            if (vertOverlap) { hitIdx = idx; break; }
+        }
+        if (hitIdx === -1) return;
+        const cube = stack[hitIdx];
+        const horizOverlap = this.player.x < cube.x + cube.w && this.player.x + this.player.w > cube.x;
+        if (!horizOverlap) return;
+
+        const isTop = hitIdx === stack.length - 1;
+        if (isTop && this.pushCooldown <= 0) {
+            const closeEnough = dir === 1
+                ? (this.player.x + this.player.w - cube.x < this.cubeSize * 0.6)
+                : (cube.x + cube.w - this.player.x < this.cubeSize * 0.6);
+            if (closeEnough && this.attemptPush(checkCol, dir)) {
+                this.pushCooldown = 14; // задержка = толчок ровно на 1 слот за раз
+                return;
             }
         }
+        // стена: коробка не толкается (не верхняя / нет места / кулдаун) — блокируем игрока
+        if (dir === 1) this.player.x = cube.x - this.player.w;
+        else this.player.x = cube.x + cube.w;
+        this.player.vx = 0;
     }
 
     // --- Обновление ---
@@ -749,7 +781,8 @@ class Game {
 
         this.player.y += this.player.vy;
 
-        // Пол
+
+   // Пол
         if (this.player.y + this.player.h >= this.floorY) {
             this.player.y = this.floorY - this.player.h;
             if (this.player.vy > 3 && !wasOnGround) audio.sfxLand();
@@ -776,9 +809,9 @@ class Game {
         // 2. Краны: едут один проезд, несут один блок, сбрасывают его один раз,
         //    уезжают за экран и возвращаются с новым блоком.
         this.speedMulTimer++;
-        if (this.speedMulTimer >= 300) {           // раз в 5 секунд — очень плавный общий разгон
+        if (this.speedMulTimer >= 360) {           // раз в 6 секунд — мягкий общий разгон
             this.speedMulTimer = 0;
-            this.speedMul = Math.min(1.8, this.speedMul + 0.015);
+            this.speedMul = Math.min(1.35, this.speedMul + 0.01);
         }
         for (let g of this.grabs) {
             g.x += g.speed * g.dir * this.speedMul;
@@ -922,7 +955,8 @@ class Game {
         audio.sfxLine(n);
         updateUI();
     }
-   spawnParticles(x, y, color) {
+
+    spawnParticles(x, y, color) {
         for (let i = 0; i < 10; i++) {
             this.particles.push({
                 x, y,
@@ -1021,7 +1055,7 @@ class Game {
             } else {
                 gripOpen = 1; // блока нет — щупы разведены
             }
-            const armW = 4;
+           const armW = 4;
             const armH = bs * 0.7;
             const armY = by + bs * 0.1;
             const gap = 1 + gripOpen * 7; // расстояние между щупом и краем блока/его позицией
@@ -1052,7 +1086,8 @@ class Game {
                 ctx.fillRect(bx + 3, by + 3, bs - 6, bs - 6);
             }
         }
-       // частицы
+
+        // частицы
         for (let p of this.particles) {
             ctx.globalAlpha = Math.max(0, p.life / 30);
             ctx.fillStyle = p.color;
@@ -1127,10 +1162,25 @@ function updateUI() {
 }
 
 let rafId = null;
-function gameLoop() {
-    if (game) {
-        try { game.update(); game.draw(); } catch (e) { console.error(e); }
+let lastFrameTime = null;
+let simAccumulator = 0;
+const FIXED_DT = 1 / 60; // симуляция всегда считается 60 "тиков" в реальную секунду
+
+function gameLoop(now) {
+    if (lastFrameTime === null) lastFrameTime = now;
+    let frameSeconds = (now - lastFrameTime) / 1000;
+    lastFrameTime = now;
+    // Защита от огромного скачка (вкладка была свёрнута/неактивна) — не пытаемся "нагнать" всё разом
+    if (frameSeconds > 0.25) frameSeconds = 0.25;
+    simAccumulator += frameSeconds;
+
+    let steps = 0;
+    while (simAccumulator >= FIXED_DT && steps < 8) {
+        if (game) { try { game.update(); } catch (e) { console.error(e); } }
+        simAccumulator -= FIXED_DT;
+        steps++;
     }
+    if (game) { try { game.draw(); } catch (e) { console.error(e); } }
     rafId = requestAnimationFrame(gameLoop);
 }
 
@@ -1215,8 +1265,7 @@ soundVolume.value = Math.round(audio.soundVolume * 100);
 musicVolume.value = Math.round(audio.musicVolume * 100);
 soundVolume.disabled = !audio.soundEnabled;
 musicVolume.disabled = !audio.musicEnabled;
-
-soundToggle.addEventListener('change', () => {
+   soundToggle.addEventListener('change', () => {
     audio.start();
     audio.setSoundEnabled(soundToggle.checked);
     soundVolume.disabled = !soundToggle.checked;
@@ -1274,7 +1323,7 @@ bindHold(document.getElementById('jumpBtn'), () => game && game.keyDown('jump'),
 // 7. ЗАПУСК
 // ============================================================
 showMenu();
-gameLoop();
+requestAnimationFrame(gameLoop);
 </script>
 </body>
 </html>
