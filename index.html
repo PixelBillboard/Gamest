@@ -549,18 +549,18 @@ class Game {
         const playerH = 34;
         this.cubeSize = 25;                               // было 40 — теперь ≈ половина роста строителя
         this.COLS = Math.round(W / this.cubeSize);        // было 10 → теперь 16 дорожек
-        this.MAX_ROWS = 19;                                // высота стопки скорректирована под новый размер коробки
+        this.MAX_ROWS = 20;  // жёсткий потолок высоты колонки — новые коробки не встают выше,
+                              // пока высота не опустится ниже (например, после очистки ряда)
         this.floorY = H - 20;
         this.columns = [];                                // columns[c] = [ {col,row,x,y,visualX,visualY,w,h}, ... ] снизу вверх
-        for (let c = 0; c < this.COLS; c++) this.columns.push([]);
+        for (let c = 0; c < this.COLS; c++) this.columns.push([])
 
-        this.player = {
+
+this.player = {
             x: W/2 - 12, y: this.floorY - playerH, w: 24, h: playerH,
             vx: 0, vy: 0, onGround: true, facing: 1, frame: 0,
         };
-
-
-   this.cubes = [];        // падающие (ещё не в сетке)
+        this.cubes = [];        // падающие (ещё не в сетке)
         this.grabs = [];
         this.particles = [];
         this.score = 0;
@@ -593,19 +593,19 @@ class Game {
     }
 
     randomDropX(dir) {
-        // Выбираем точку сброса только среди колонок, где ещё есть запас по высоте —
-        // краны не должны целиться туда, где стопка уже почти достаёт до самого крана.
-        const margin = W * 0.18;
-        const minX = margin, maxX = W - margin;
-        const ceiling = 14; // выше этой высоты (в кубиках) — колонка считается "слишком полной"
+        // Выбираем точку сброса только среди колонок, где ещё есть запас по высоте — колонка,
+        // достигшая потолка (MAX_ROWS), исключается, пока не опустится ниже (после очистки ряда).
+        // Раньше здесь был отступ от краёв экрана (margin), который случайно исключал из выбора
+        // целые крайние колонки — из-за него краны никогда не целились в первые/последние
+        // колонки поля. Теперь доступны все колонки без исключения.
         const candidates = [];
         for (let col = 0; col < this.COLS; col++) {
-            const cx = this.colX(col) + this.cubeSize / 2;
-            if (cx < minX || cx > maxX) continue;
-            if (this.columns[col].length < ceiling) candidates.push(cx);
+            if (this.columns[col].length < this.MAX_ROWS) {
+                candidates.push(this.colX(col) + this.cubeSize / 2);
+            }
         }
         if (candidates.length === 0) {
-            // Все подходящие колонки почти заполнены — кран в этот раз просто проедет без сброса.
+            // Все колонки уже на потолке высоты — кран в этот раз просто проедет без сброса.
             return dir === 1 ? W + 1000 : -1000;
         }
         return candidates[Math.floor(Math.random() * candidates.length)];
@@ -641,8 +641,9 @@ class Game {
         if (key === 'right') this.keys.right = true;
         if (key === 'jump') {
             if (this.player.onGround) {
-                // Высота прыжка подобрана так, чтобы забраться ровно на 1 ящик (не на 2, как раньше).
-                this.player.vy = -5.0;
+                // Высота прыжка подобрана так, чтобы уверенно забираться ровно на 1 ящик
+                // (не на 2), но с запасом, чтобы не "не доставать" до него.
+                this.player.vy = -5.4;
                 this.player.onGround = false;
                 audio.sfxJump();
             }
@@ -731,7 +732,18 @@ class Game {
         if (!horizOverlap) return;
 
         const isTop = hitIdx === stack.length - 1;
-        if (isTop && this.pushCooldown <= 0) {
+
+        // Если игрок в прыжке и его ступни уже на уровне верхушки коробки (или чуть выше) —
+        // считаем, что он запрыгивает НА неё сверху, а не врезается в бок. В этом случае не
+        // блокируем движение стеной — иначе игрок просто не долетал бы до верха коробки,
+        // застревая в её боковой грани прямо перед приземлением.
+        const nearTopFromAbove = !this.player.onGround && (this.player.y + this.player.h) <= cube.y + 8;
+        if (nearTopFromAbove) return;
+
+        // Толкать коробку можно только стоя на земле — в прыжке толкать нельзя. Иначе можно было
+        // запрыгнуть на верхнюю коробку стопки, сдвинуть её прыжком, а сразу за этим толкнуть
+        // освободившуюся нижнюю — получалось, что одним движением сдвигаются сразу 2 коробки.
+        if (isTop && this.player.onGround && this.pushCooldown <= 0) {
             const closeEnough = dir === 1
                 ? (this.player.x + this.player.w - cube.x < this.cubeSize * 0.6)
                 : (cube.x + cube.w - this.player.x < this.cubeSize * 0.6);
@@ -740,7 +752,7 @@ class Game {
                 return;
             }
         }
-        // стена: коробка не толкается (не верхняя / нет места / кулдаун) — блокируем игрока
+        // стена: коробка не толкается (не верхняя / нет места / кулдаун / в прыжке) — блокируем игрока
         if (dir === 1) this.player.x = cube.x - this.player.w;
         else this.player.x = cube.x + cube.w;
         this.player.vx = 0;
@@ -781,8 +793,7 @@ class Game {
 
         this.player.y += this.player.vy;
 
-
-   // Пол
+        // Пол
         if (this.player.y + this.player.h >= this.floorY) {
             this.player.y = this.floorY - this.player.h;
             if (this.player.vy > 3 && !wasOnGround) audio.sfxLand();
@@ -798,7 +809,7 @@ class Game {
             const stack = this.columns[centerCol];
             if (stack.length > 0) {
                 const top = stack[stack.length - 1];
-                if (this.player.y + this.player.h >= top.y && this.player.y + this.player.h <= top.y + 12) {
+                if (this.player.y + this.player.h >= top.y && this.player.y + this.player.h <= top.y + 14) {
                     this.player.y = top.y - this.player.h;
                     this.player.vy = 0;
                     this.player.onGround = true;
@@ -831,7 +842,9 @@ class Game {
                 }
             }
 
-            // Уехал за пределы экрана — возвращается с новым блоком с той же стороны
+
+
+// Уехал за пределы экрана — возвращается с новым блоком с той же стороны
             if ((g.dir === 1 && g.x > W + 40) || (g.dir === -1 && g.x < -70)) {
                 const newDir = Math.random() < 0.5 ? 1 : -1;
                 g.dir = newDir;
@@ -880,7 +893,9 @@ class Game {
                 }
             }
             if (c.y + c.h >= surfaceY) {
-                const row = this.columns[c.col].length;
+                // Защитный предел: колонка не должна перерасти MAX_ROWS даже в редком случае,
+                // когда несколько кранов почти одновременно целятся в одну и ту же колонку.
+                const row = Math.min(this.columns[c.col].length, this.MAX_ROWS - 1);
                 const cube = {
                     col: c.col, row,
                     x: this.colX(c.col), y: this.rowY(row),
@@ -968,8 +983,9 @@ class Game {
             });
         }
     }
+   
 
-    // --- Отрисовка ---
+   // --- Отрисовка ---
     draw() {
         ctx.save();
         if (this.shake > 0.3) {
@@ -1055,7 +1071,7 @@ class Game {
             } else {
                 gripOpen = 1; // блока нет — щупы разведены
             }
-           const armW = 4;
+            const armW = 4;
             const armH = bs * 0.7;
             const armY = by + bs * 0.1;
             const gap = 1 + gripOpen * 7; // расстояние между щупом и краем блока/его позицией
@@ -1087,7 +1103,7 @@ class Game {
             }
         }
 
-        // частицы
+   // частицы
         for (let p of this.particles) {
             ctx.globalAlpha = Math.max(0, p.life / 30);
             ctx.fillStyle = p.color;
@@ -1191,6 +1207,8 @@ function newGame() {
     updateUI();
 }
 
+
+   
 // ============================================================
 // 4. ПЕРЕКЛЮЧЕНИЕ ЭКРАНОВ
 // ============================================================
@@ -1265,7 +1283,8 @@ soundVolume.value = Math.round(audio.soundVolume * 100);
 musicVolume.value = Math.round(audio.musicVolume * 100);
 soundVolume.disabled = !audio.soundEnabled;
 musicVolume.disabled = !audio.musicEnabled;
-   soundToggle.addEventListener('change', () => {
+
+soundToggle.addEventListener('change', () => {
     audio.start();
     audio.setSoundEnabled(soundToggle.checked);
     soundVolume.disabled = !soundToggle.checked;
@@ -1327,3 +1346,4 @@ requestAnimationFrame(gameLoop);
 </script>
 </body>
 </html>
+   
