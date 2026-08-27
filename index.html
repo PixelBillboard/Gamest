@@ -553,10 +553,10 @@ class Game {
                               // пока высота не опустится ниже (например, после очистки ряда)
         this.floorY = H - 20;
         this.columns = [];                                // columns[c] = [ {col,row,x,y,visualX,visualY,w,h}, ... ] снизу вверх
-        for (let c = 0; c < this.COLS; c++) this.columns.push([])
+        for (let c = 0; c < this.COLS; c++) this.columns.push([]);
 
-
-this.player = {
+        
+ this.player = {
             x: W/2 - 12, y: this.floorY - playerH, w: 24, h: playerH,
             vx: 0, vy: 0, onGround: true, facing: 1, frame: 0,
         };
@@ -700,11 +700,8 @@ this.player = {
 
     // --- Столкновения игрока с коробками: толчок ровно на 1 слот, либо жёсткая стена.
     //     Проверяем СТРОГО ОДНУ колонку за кадр — ту, в которую игрок реально упирается по
-    //     направлению своего движения. Раньше проверялись все колонки подряд, и если толчок
-    //     передвигал коробку в колонку с бОльшим индексом, цикл через мгновение доходил и до
-    //     неё же в этом самом кадре, повторно "стеной" переставляя игрока по новой позиции —
-    //     это и вызывало телепорт/проскок вперёд. Теперь такого повторного захода в принципе
-    //     быть не может: одна проверка, одна колонка, один результат за кадр.
+    //     направлению своего движения — чтобы не было повторного захода в том же кадре
+    //     (источник старого бага с телепортом/проскоком вперёд).
     resolveCubeCollisions() {
         if (this.pushCooldown > 0) this.pushCooldown--;
         const dir = this.player.vx > 0.15 ? 1 : (this.player.vx < -0.15 ? -1 : 0);
@@ -718,44 +715,73 @@ this.player = {
         const stack = this.columns[checkCol];
         if (stack.length === 0) return;
 
-        // Ищем коробку в этой колонке ровно на высоте игрока (может быть не только верхняя —
-        // нижняя коробка под другой стопкой тоже должна работать как стена).
+        const vertOverlap = (cb) => this.player.y < cb.y + cb.h - 2 && this.player.y + this.player.h > cb.y + 2;
+
+        // Сначала проверяем ВЕРХНЮЮ коробку стопки — только её вообще можно толкнуть.
+        // Раньше поиск шёл снизу вверх и останавливался на первой найденной: рост персонажа
+        // (34px) больше высоты одной коробки (25px), поэтому в прыжке тело перекрывало сразу
+        // обе коробки 2-ярусной стопки, но алгоритм всегда находил нижнюю (закопанную,
+        // непробиваемую для толчка) и просто ставил стену — верхнюю толкнуть было невозможно.
         let hitIdx = -1;
-        for (let idx = 0; idx < stack.length; idx++) {
-            const cb = stack[idx];
-            const vertOverlap = this.player.y < cb.y + cb.h - 2 && this.player.y + this.player.h > cb.y + 2;
-            if (vertOverlap) { hitIdx = idx; break; }
+        const topIdx = stack.length - 1;
+        if (vertOverlap(stack[topIdx])) {
+            hitIdx = topIdx;
+        } else {
+            for (let idx = 0; idx < topIdx; idx++) {
+                if (vertOverlap(stack[idx])) { hitIdx = idx; break; }
+            }
         }
         if (hitIdx === -1) return;
         const cube = stack[hitIdx];
         const horizOverlap = this.player.x < cube.x + cube.w && this.player.x + this.player.w > cube.x;
         if (!horizOverlap) return;
 
-        const isTop = hitIdx === stack.length - 1;
+        const isTop = hitIdx === topIdx;
 
         // Если игрок в прыжке и его ступни уже на уровне верхушки коробки (или чуть выше) —
         // считаем, что он запрыгивает НА неё сверху, а не врезается в бок. В этом случае не
-        // блокируем движение стеной — иначе игрок просто не долетал бы до верха коробки,
-        // застревая в её боковой грани прямо перед приземлением.
+        // блокируем движение стеной — иначе игрок просто не долетал бы до верха коробки.
         const nearTopFromAbove = !this.player.onGround && (this.player.y + this.player.h) <= cube.y + 8;
         if (nearTopFromAbove) return;
 
-        // Толкать коробку можно только стоя на земле — в прыжке толкать нельзя. Иначе можно было
-        // запрыгнуть на верхнюю коробку стопки, сдвинуть её прыжком, а сразу за этим толкнуть
-        // освободившуюся нижнюю — получалось, что одним движением сдвигаются сразу 2 коробки.
-        if (isTop && this.player.onGround && this.pushCooldown <= 0) {
+        // Толкать можно и в прыжке — иначе до коробок на высоких ярусах в принципе не
+        // дотянуться, ведь запрыгнуть туда часто можно только прыжком. От случайного
+        // "каскада" (толкнул верхнюю коробку прыжком и тут же толкнул освободившуюся нижнюю)
+        // защищает общий кулдаун — он не даёт совершить второй толчок раньше чем через ~0.4с,
+        // дольше типичной длительности одного прыжка.
+        if (isTop && this.pushCooldown <= 0) {
             const closeEnough = dir === 1
                 ? (this.player.x + this.player.w - cube.x < this.cubeSize * 0.6)
                 : (cube.x + cube.w - this.player.x < this.cubeSize * 0.6);
             if (closeEnough && this.attemptPush(checkCol, dir)) {
-                this.pushCooldown = 14; // задержка = толчок ровно на 1 слот за раз
+                this.pushCooldown = 24;
                 return;
             }
         }
-        // стена: коробка не толкается (не верхняя / нет места / кулдаун / в прыжке) — блокируем игрока
+        // стена: коробка не толкается (не верхняя / нет места / кулдаун) — блокируем игрока
         if (dir === 1) this.player.x = cube.x - this.player.w;
         else this.player.x = cube.x + cube.w;
         this.player.vx = 0;
+    }
+
+    // Падающая после толчка коробка (pushedFall) не может убить или разбиться, но должна
+    // оставаться физическим препятствием — иначе персонаж может пробежать сквозь неё, пока
+    // она летит вниз (тексту­ры накладываются друг на друга).
+    blockFallingPushedCubes() {
+        for (const c of this.cubes) {
+            if (!c.pushedFall) continue;
+            const vertOverlap = this.player.y < c.y + c.h - 2 && this.player.y + this.player.h > c.y + 2;
+            if (!vertOverlap) continue;
+            const horizOverlap = this.player.x < c.x + c.w && this.player.x + this.player.w > c.x;
+            if (!horizOverlap) continue;
+            if (this.player.x + this.player.w - c.x < c.w / 2) {
+                this.player.x = c.x - this.player.w;
+            } else {
+                this.player.x = c.x + c.w;
+            }
+            this.player.vx = 0;
+   
+   }
     }
 
     // --- Обновление ---
@@ -788,6 +814,7 @@ this.player = {
         if (this.player.x < 0) this.player.x = 0;
         if (this.player.x + this.player.w > W) this.player.x = W - this.player.w;
         this.resolveCubeCollisions();
+        this.blockFallingPushedCubes();
         if (this.player.x < 0) this.player.x = 0;
         if (this.player.x + this.player.w > W) this.player.x = W - this.player.w;
 
@@ -842,9 +869,7 @@ this.player = {
                 }
             }
 
-
-
-// Уехал за пределы экрана — возвращается с новым блоком с той же стороны
+            // Уехал за пределы экрана — возвращается с новым блоком с той же стороны
             if ((g.dir === 1 && g.x > W + 40) || (g.dir === -1 && g.x < -70)) {
                 const newDir = Math.random() < 0.5 ? 1 : -1;
                 g.dir = newDir;
@@ -908,8 +933,7 @@ this.player = {
                 this.checkLines();
             }
         }
-
-        // Плавное скольжение визуальной позиции коробок к их логическому слоту
+       // Плавное скольжение визуальной позиции коробок к их логическому слоту
         for (let c = 0; c < this.COLS; c++) {
             for (let cube of this.columns[c]) {
                 if (cube.visualX === undefined) { cube.visualX = cube.x; cube.visualY = cube.y; }
@@ -983,9 +1007,8 @@ this.player = {
             });
         }
     }
-   
 
-   // --- Отрисовка ---
+    // --- Отрисовка ---
     draw() {
         ctx.save();
         if (this.shake > 0.3) {
@@ -1102,8 +1125,7 @@ this.player = {
                 ctx.fillRect(bx + 3, by + 3, bs - 6, bs - 6);
             }
         }
-
-   // частицы
+       // частицы
         for (let p of this.particles) {
             ctx.globalAlpha = Math.max(0, p.life / 30);
             ctx.fillStyle = p.color;
@@ -1207,7 +1229,6 @@ function newGame() {
     updateUI();
 }
 
-
    
 // ============================================================
 // 4. ПЕРЕКЛЮЧЕНИЕ ЭКРАНОВ
@@ -1303,7 +1324,7 @@ musicVolume.addEventListener('input', () => {
     audio.setMusicVolume(musicVolume.value / 100);
 });
 
-// ============================================================
+   // ============================================================
 // 6. УПРАВЛЕНИЕ (клавиатура + сенсор/мышь)
 // ============================================================
 document.addEventListener('keydown', (e) => {
@@ -1346,4 +1367,3 @@ requestAnimationFrame(gameLoop);
 </script>
 </body>
 </html>
-   
