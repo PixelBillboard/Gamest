@@ -36,6 +36,14 @@
            Теперь ширина также ограничена высотой вьюпорта, чтобы весь блок всегда помещался. */
         width: min(100%, 420px, calc((100vh - 110px) / 1.55));
     }
+    /* На ПК растягиваем игру почти на весь экран, без узкой "телефонной" карточки.
+       Класс .desktop ставится инлайн-скриптом в самом начале <body>, до отрисовки,
+       поэтому эффекта "мигания" маленького окна не будет. На телефонах класса нет —
+       там всё остаётся как было (компактная карточка). */
+    html.desktop .game-wrapper {
+        max-width: 900px;
+        width: min(94vw, calc((100vh - 40px) / 1.55));
+    }
     .game-container {
         position: relative;
         display: inline-block;
@@ -370,6 +378,12 @@
 </style>
 </head>
 <body>
+<script>
+    // Определяем ПК до отрисовки разметки, чтобы сразу применить крупный десктопный
+    // размер и не было "прыжка" от маленькой карточки к большой.
+    window.__isDesktop = !/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+    if (window.__isDesktop) document.documentElement.classList.add('desktop');
+</script>
 <div class="game-wrapper" id="wrapper">
 
     <!-- ===================== ГЛАВНОЕ МЕНЮ ===================== -->
@@ -379,7 +393,6 @@
             <button class="btn" id="playBtn" data-i18n="playBtn">▶ ИГРАТЬ</button>
             <button class="btn secondary" id="recordsBtn" data-i18n="recordsBtn">🏆 РЕКОРДЫ</button>
             <button class="btn secondary" id="settingsBtn" data-i18n="settingsBtn">⚙ НАСТРОЙКИ</button>
-            <button class="btn secondary hidden" id="fullscreenBtn" data-i18n="fullscreenBtn">⛶ НА ВЕСЬ ЭКРАН</button>
         </div>
     </div>
 
@@ -614,7 +627,6 @@ const I18N = {
         playBtn: '▶ ИГРАТЬ',
         recordsBtn: '🏆 РЕКОРДЫ',
         settingsBtn: '⚙ НАСТРОЙКИ',
-        fullscreenBtn: '⛶ НА ВЕСЬ ЭКРАН',
         recordsTitle: '🏆 Рекорды',
         backBtn: '← НАЗАД',
         recordsEmpty: 'Пока нет рекордов — сыграйте первую игру!',
@@ -639,7 +651,6 @@ const I18N = {
         playBtn: '▶ PLAY',
         recordsBtn: '🏆 RECORDS',
         settingsBtn: '⚙ SETTINGS',
-        fullscreenBtn: '⛶ FULLSCREEN',
         recordsTitle: '🏆 Records',
         backBtn: '← BACK',
         recordsEmpty: 'No records yet — play your first game!',
@@ -686,7 +697,7 @@ function applyLanguage(langCode) {
 // --- Полноэкранный режим для ПК ---
 // Мобильные клиенты Яндекс Игр разворачивают игру сами, поэтому кнопку/автозапуск
 // полноэкранного режима включаем только для десктопа.
-const isDesktop = !/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+const isDesktop = window.__isDesktop;
 let ysdk = null;
 
 function requestFullscreen() {
@@ -695,19 +706,6 @@ function requestFullscreen() {
     } else if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(() => {});
     }
-}
-function exitFullscreen() {
-    if (ysdk && ysdk.screen && ysdk.screen.fullscreen) {
-        ysdk.screen.fullscreen.exit();
-    } else if (document.fullscreenElement && document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-    }
-}
-function isFullscreenActive() {
-    if (ysdk && ysdk.screen && ysdk.screen.fullscreen) {
-        return ysdk.screen.fullscreen.status === 'on';
-    }
-    return !!document.fullscreenElement;
 }
 
 // ============================================================
@@ -1768,16 +1766,6 @@ bindHold(document.getElementById('jumpBtn'), () => game && game.keyDown('jump'),
 // ============================================================
 // 7. ЗАПУСК
 // ============================================================
-
-// --- Кнопка "На весь экран" (только для ПК) ---
-const fullscreenBtn = document.getElementById('fullscreenBtn');
-if (isDesktop) {
-    fullscreenBtn.classList.remove('hidden');
-    fullscreenBtn.addEventListener('click', () => {
-        audio.sfxClick();
-        if (isFullscreenActive()) exitFullscreen(); else requestFullscreen();
-    });
-}
 
 // --- Инициализация Yandex Games SDK ---
 if (window.YaGames) {
