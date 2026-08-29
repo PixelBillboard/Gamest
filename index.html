@@ -715,6 +715,37 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const W = 400, H = 600;
 
+// --- Резкий рендер на любом экране (в т.ч. на широком ПК-окне) ---
+// Вся игра рисуется в логических координатах 400×600 (W×H), а сам canvas растянут через
+// CSS (width:100%) до фактического размера блока — на ПК он может быть в 2 раза шире
+// телефонной карточки. Если внутреннее разрешение canvas (canvas.width/height) остаётся
+// 400×600, браузер масштабирует уже готовую картинку — из-за этого мелкий текст (таймер,
+// счётчик кранов) выглядит смазанным. Здесь подгоняем реальное разрешение canvas под его
+// отображаемый CSS-размер и плотность пикселей экрана (devicePixelRatio), а весь код отрисовки
+// остаётся прежним — он всегда работает в неизменных координатах 0..400 / 0..600 благодаря
+// ctx.setTransform, который пересчитывает эти координаты в физические пиксели canvas.
+function fitCanvasResolution() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = canvas.clientWidth;
+    if (!cssWidth) return;
+    const targetW = Math.max(1, Math.round(cssWidth * dpr));
+    const targetH = Math.max(1, Math.round(cssWidth * (H / W) * dpr));
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+    }
+    ctx.setTransform(targetW / W, 0, 0, targetH / H, 0, 0);
+}
+fitCanvasResolution();
+if (window.ResizeObserver) {
+    new ResizeObserver(fitCanvasResolution).observe(canvas);
+} else {
+    window.addEventListener('resize', fitCanvasResolution);
+}
+// Полноэкранный режим и переезд между окнами меняют CSS-размер без события resize —
+// подстраховываемся отдельным слушателем.
+document.addEventListener('fullscreenchange', () => requestAnimationFrame(fitCanvasResolution));
+
 const scoreSpan = document.getElementById('scoreDisplay');
 const recordSpan = document.getElementById('recordDisplay');
 const finalScoreSpan = document.getElementById('finalScore');
@@ -839,14 +870,22 @@ class Game {
         // Раньше здесь был отступ от краёв экрана (margin), который случайно исключал из выбора
         // целые крайние колонки — из-за него краны никогда не целились в первые/последние
         // колонки поля. Теперь доступны все колонки без исключения.
+        // Также исключаем колонки, в которые СЕЙЧАС целится другой кран, ещё не сбросивший свой
+        // блок — иначе два крана могли выбрать одну и ту же колонку независимо друг от друга,
+        // и два блока падали точно в одну точку одновременно.
+        const reserved = new Set(
+            this.grabs.filter(g => g.hasBlock && !g.dropped)
+                      .map(g => Math.round(g.dropAtX / this.cubeSize))
+        );
         const candidates = [];
         for (let col = 0; col < this.COLS; col++) {
-            if (this.columns[col].length < this.MAX_ROWS) {
+            if (this.columns[col].length < this.MAX_ROWS && !reserved.has(col)) {
                 candidates.push(this.colX(col) + this.cubeSize / 2);
             }
         }
         if (candidates.length === 0) {
-            // Все колонки уже на потолке высоты — кран в этот раз просто проедет без сброса.
+            // Все свободные колонки заняты другими кранами или на потолке высоты —
+            // в этот раз кран просто проедет без сброса.
             return dir === 1 ? W + 1000 : -1000;
         }
         return candidates[Math.floor(Math.random() * candidates.length)];
@@ -1133,8 +1172,10 @@ class Game {
         // 3. Падение кубиков (x зафиксирован по колонке — наложений быть не может)
         for (let i = this.cubes.length - 1; i >= 0; i--) {
             const c = this.cubes[i];
+            const prevBottom = c.y + c.h; // граница кубика ДО перемещения в этом кадре
             c.y += c.vy;
             c.vy = Math.min(c.vy + 0.12, 6);
+            const newBottom = c.y + c.h;
 
             // Столкновение с игроком: если грузчик в прыжке (не на земле) — разбивает коробку.
             // Если он идёт или стоит на земле — коробка убивает.
@@ -1143,14 +1184,24 @@ class Game {
             // не может ни убить его, ни "разбиться от удара головой".
             if (!c.pushedFall) {
                 const overlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
-                const overlapY = this.player.y < c.y + c.h - 3 && this.player.y + this.player.h > c.y + 3;
                 // Убивать (или разбиваться от удара головой) коробка должна, только если она
                 // реально падает НАД головой персонажа, а не просто пересекается с телом на
                 // одном уровне сбоку. Раньше засчитывалось любое пересечение по AABB — из-за
                 // этого коробка, которая была примерно вровень с корпусом/ногами (а не выше
                 // головы), тоже засчитывалась как смертельное столкновение даже в воздухе.
-                const hitsHead = c.y + c.h <= this.player.y + 10;
-                if (!this.gameOver && overlapX && overlapY && hitsHead) {
+                //
+                // ВАЖНО: раньше это была проверка "снимком" одного кадра (newBottom <= player.y+10).
+                // На высокой скорости падения (до 6px/кадр) нижняя грань кубика могла за один кадр
+                // перескочить эту узкую 10px-полосу "удара по голове" ровно в момент, когда по X ещё
+                // не было пересечения (игрок как раз прыгал вбок), а уже в СЛЕДУЮЩЕМ кадре, когда X
+                // совпал, кубик формально был уже "ниже головы" — удар не засчитывался, и коробка
+                // тихо приземлялась поверх стопки в той же колонке, где стоял игрок — то есть
+                // визуально оказывалась под его ногами вместо того, чтобы убить или разбиться.
+                // Теперь проверяем не точку, а весь ОТРЕЗОК пути нижней грани кубика за этот кадр —
+                // так удар не может быть пропущен независимо от скорости падения.
+                const headTop = this.player.y, headBottom = this.player.y + 10;
+                const hitsHead = prevBottom <= headBottom && newBottom >= headTop;
+                if (!this.gameOver && overlapX && hitsHead) {
                     if (!this.player.onGround) {
                         this.cubes.splice(i, 1);
                         this.score += 5;
@@ -1180,6 +1231,27 @@ class Game {
                     // (это создало бы наложение) — просто убираем его.
                     this.cubes.splice(i, 1);
                     continue;
+                }
+                // Финальная страховка: даже если проверка удара выше почему-то не сработала,
+                // кубик не должен молча "лечь" туда, где прямо сейчас физически стоит игрок —
+                // если в момент приземления есть пересечение с игроком по X и Y, это тоже удар.
+                if (!c.pushedFall && !this.gameOver) {
+                    const landOverlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
+                    const landOverlapY = this.player.y < surfaceY && this.player.y + this.player.h > c.y + 3;
+                    if (landOverlapX && landOverlapY) {
+                        if (!this.player.onGround) {
+                            this.cubes.splice(i, 1);
+                            this.score += 5;
+                            this.player.vy = 2.2;
+                            this.spawnParticles(c.x + c.w/2, c.y + c.h/2);
+                            audio.sfxBreak();
+                            updateUI();
+                            continue;
+                        } else {
+                            this.triggerGameOver();
+                            return;
+                        }
+                    }
                 }
                 const row = this.columns[c.col].length;
                 const cube = {
@@ -1307,7 +1379,12 @@ class Game {
         ctx.shadowBlur = 4;
         for (let c = 0; c < this.COLS; c++) {
             for (let s of this.columns[c]) {
-                const sx = s.visualX ?? s.x, sy = s.visualY ?? s.y;
+                // Округляем до целого пикселя: пока коробка визуально "доезжает" до своего слота
+                // после толчка (visualX/visualY плавно интерполируются), дробные координаты
+                // заставляют canvas сглаживать края (антиалиасинг) — из-за этого щель между
+                // соседними коробками на глаз "гуляет" по ширине от кадра к кадру. Целые пиксели
+                // убирают этот эффект, и зазор всегда остаётся одинаковым (ровно 1px).
+                const sx = Math.round(s.visualX ?? s.x), sy = Math.round(s.visualY ?? s.y);
                 ctx.fillStyle = '#e0a060';
                 ctx.fillRect(sx, sy, s.w - 1, s.h - 1);
                 ctx.fillStyle = '#c08040';
