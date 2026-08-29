@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Строитель — бесконечный забег</title>
+<!-- Yandex Games SDK: подключается первым, до остального контента -->
+<script src="https://yandex.ru/games/sdk/v2"></script>
+<title data-i18n="pageTitle">Строитель — бесконечный забег</title>
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -372,30 +374,31 @@
 
     <!-- ===================== ГЛАВНОЕ МЕНЮ ===================== -->
     <div class="screen" id="menuScreen">
-        <div class="screen-title">🏗️ СТРОИТЕЛЬ</div>
+        <div class="screen-title" data-i18n="menuTitle">🏗️ СТРОИТЕЛЬ</div>
         <div class="menu-btns">
-            <button class="btn" id="playBtn">▶ ИГРАТЬ</button>
-            <button class="btn secondary" id="recordsBtn">🏆 РЕКОРДЫ</button>
-            <button class="btn secondary" id="settingsBtn">⚙ НАСТРОЙКИ</button>
+            <button class="btn" id="playBtn" data-i18n="playBtn">▶ ИГРАТЬ</button>
+            <button class="btn secondary" id="recordsBtn" data-i18n="recordsBtn">🏆 РЕКОРДЫ</button>
+            <button class="btn secondary" id="settingsBtn" data-i18n="settingsBtn">⚙ НАСТРОЙКИ</button>
+            <button class="btn secondary hidden" id="fullscreenBtn" data-i18n="fullscreenBtn">⛶ НА ВЕСЬ ЭКРАН</button>
         </div>
     </div>
 
     <!-- ===================== РЕКОРДЫ ===================== -->
     <div class="screen hidden" id="recordsScreen">
-        <div class="screen-title" style="font-size:24px;">🏆 Рекорды</div>
+        <div class="screen-title" style="font-size:24px;" data-i18n="recordsTitle">🏆 Рекорды</div>
         <div class="records-list" id="recordsList"></div>
         <div class="menu-btns" style="margin-top:6px;">
-            <button class="btn secondary" id="recordsBackBtn">← НАЗАД</button>
+            <button class="btn secondary" id="recordsBackBtn" data-i18n="backBtn">← НАЗАД</button>
         </div>
     </div>
 
     <!-- ===================== НАСТРОЙКИ ===================== -->
     <div class="screen hidden" id="settingsScreen">
-        <div class="screen-title" style="font-size:24px;">⚙ Настройки</div>
+        <div class="screen-title" style="font-size:24px;" data-i18n="settingsTitle">⚙ Настройки</div>
         <div class="settings-box">
             <div class="setting-row">
                 <div class="row-top">
-                    <span><span class="icon-slot" id="soundIcon">🔊</span> Звуки</span>
+                    <span><span class="icon-slot" id="soundIcon">🔊</span> <span data-i18n="soundLabel">Звуки</span></span>
                     <label class="switch">
                         <input type="checkbox" id="soundToggle">
                         <span class="slider-track"></span>
@@ -405,7 +408,7 @@
             </div>
             <div class="setting-row">
                 <div class="row-top">
-                    <span><span class="icon-slot" id="musicIcon">🎵</span> Музыка</span>
+                    <span><span class="icon-slot" id="musicIcon">🎵</span> <span data-i18n="musicLabel">Музыка</span></span>
                     <label class="switch">
                         <input type="checkbox" id="musicToggle">
                         <span class="slider-track"></span>
@@ -415,7 +418,7 @@
             </div>
             <div class="setting-row">
                 <div class="row-top">
-                    <span>🎮 Кнопки на экране</span>
+                    <span data-i18n="buttonsControlLabel">🎮 Кнопки на экране</span>
                     <label class="switch">
                         <input type="checkbox" id="controlModeToggle">
                         <span class="slider-track"></span>
@@ -425,7 +428,7 @@
             </div>
         </div>
         <div class="menu-btns" style="margin-top:6px;">
-            <button class="btn secondary" id="backBtn">← НАЗАД</button>
+            <button class="btn secondary" id="backBtn" data-i18n="backBtn">← НАЗАД</button>
         </div>
     </div>
 
@@ -434,21 +437,21 @@
         <canvas id="gameCanvas" width="400" height="600"></canvas>
 
         <div class="canvas-overlay hidden" id="pauseOverlay">
-            <h1>⏸ ПАУЗА</h1>
+            <h1 data-i18n="pauseTitle">⏸ ПАУЗА</h1>
             <div class="stack-btns">
-                <button class="btn" id="resumeBtn">▶ ПРОДОЛЖИТЬ</button>
-                <button class="btn secondary" id="pauseSettingsBtn">⚙ НАСТРОЙКИ</button>
-                <button class="btn secondary" id="pauseMenuBtn">🏠 В МЕНЮ</button>
+                <button class="btn" id="resumeBtn" data-i18n="resumeBtn">▶ ПРОДОЛЖИТЬ</button>
+                <button class="btn secondary" id="pauseSettingsBtn" data-i18n="settingsBtn">⚙ НАСТРОЙКИ</button>
+                <button class="btn secondary" id="pauseMenuBtn" data-i18n="menuBtn">🏠 В МЕНЮ</button>
             </div>
         </div>
 
         <div class="canvas-overlay hidden" id="gameOverlay">
-            <h1>💀 ПРОИГРЫШ</h1>
-            <p>Счёт: <span class="accent" id="finalScore">0</span></p>
-            <p>Рекорд: <span class="accent" id="finalRecord">0</span></p>
+            <h1 data-i18n="gameOverTitle">💀 ПРОИГРЫШ</h1>
+            <p><span data-i18n="scoreLabel">Счёт:</span> <span class="accent" id="finalScore">0</span></p>
+            <p><span data-i18n="recordLabel">Рекорд:</span> <span class="accent" id="finalRecord">0</span></p>
             <div class="stack-btns">
-                <button class="btn" id="restartBtn">↻ ИГРАТЬ СНОВА</button>
-                <button class="btn secondary" id="gameOverMenuBtn">🏠 В МЕНЮ</button>
+                <button class="btn" id="restartBtn" data-i18n="restartBtn">↻ ИГРАТЬ СНОВА</button>
+                <button class="btn secondary" id="gameOverMenuBtn" data-i18n="menuBtn">🏠 В МЕНЮ</button>
             </div>
         </div>
     </div>
@@ -463,7 +466,7 @@
             <button class="ctrl-btn" id="leftBtn">◀</button>
             <button class="ctrl-btn" id="rightBtn">▶</button>
         </div>
-        <button class="ctrl-btn jump" id="jumpBtn">⬆<br>ПРЫЖОК</button>
+        <button class="ctrl-btn jump" id="jumpBtn">⬆<br><span data-i18n="jumpBtn">ПРЫЖОК</span></button>
     </div>
 </div>
 
@@ -602,6 +605,112 @@ class AudioManager {
 const audio = new AudioManager();
 
 // ============================================================
+// 0.5. ЛОКАЛИЗАЦИЯ И ИНТЕГРАЦИЯ С YANDEX GAMES SDK
+// ============================================================
+const I18N = {
+    ru: {
+        pageTitle: 'Строитель — бесконечный забег',
+        menuTitle: '🏗️ СТРОИТЕЛЬ',
+        playBtn: '▶ ИГРАТЬ',
+        recordsBtn: '🏆 РЕКОРДЫ',
+        settingsBtn: '⚙ НАСТРОЙКИ',
+        fullscreenBtn: '⛶ НА ВЕСЬ ЭКРАН',
+        recordsTitle: '🏆 Рекорды',
+        backBtn: '← НАЗАД',
+        recordsEmpty: 'Пока нет рекордов — сыграйте первую игру!',
+        settingsTitle: '⚙ Настройки',
+        soundLabel: 'Звуки',
+        musicLabel: 'Музыка',
+        buttonsControlLabel: '🎮 Кнопки на экране',
+        controlDescTouch: 'Управление свайпом и удержанием по игровому полю',
+        controlDescButtons: 'Стрелки и кнопка прыжка внизу экрана',
+        pauseTitle: '⏸ ПАУЗА',
+        resumeBtn: '▶ ПРОДОЛЖИТЬ',
+        menuBtn: '🏠 В МЕНЮ',
+        gameOverTitle: '💀 ПРОИГРЫШ',
+        scoreLabel: 'Счёт:',
+        recordLabel: 'Рекорд:',
+        restartBtn: '↻ ИГРАТЬ СНОВА',
+        jumpBtn: 'ПРЫЖОК',
+    },
+    en: {
+        pageTitle: 'Builder — Endless Run',
+        menuTitle: '🏗️ BUILDER',
+        playBtn: '▶ PLAY',
+        recordsBtn: '🏆 RECORDS',
+        settingsBtn: '⚙ SETTINGS',
+        fullscreenBtn: '⛶ FULLSCREEN',
+        recordsTitle: '🏆 Records',
+        backBtn: '← BACK',
+        recordsEmpty: 'No records yet — play your first game!',
+        settingsTitle: '⚙ Settings',
+        soundLabel: 'Sound',
+        musicLabel: 'Music',
+        buttonsControlLabel: '🎮 On-screen buttons',
+        controlDescTouch: 'Swipe and hold on the play field to move',
+        controlDescButtons: 'Arrows and jump button at the bottom of the screen',
+        pauseTitle: '⏸ PAUSED',
+        resumeBtn: '▶ RESUME',
+        menuBtn: '🏠 MENU',
+        gameOverTitle: '💀 GAME OVER',
+        scoreLabel: 'Score:',
+        recordLabel: 'Best:',
+        restartBtn: '↻ PLAY AGAIN',
+        jumpBtn: 'JUMP',
+    },
+};
+
+// ysdk.environment.i18n.lang отдаёт код языка платформы (ru, en, tr, uk, kk, be, uz, ...).
+// Полного перевода под каждый из них нет — русский показываем при ru, во всех остальных
+// случаях используем английский как международный вариант. Этого достаточно, чтобы SDK
+// реально влиял на язык интерфейса, что и проверяет модерация.
+function resolveLang(code) {
+    return code === 'ru' ? 'ru' : 'en';
+}
+
+let currentLang = 'ru';
+function applyLanguage(langCode) {
+    currentLang = resolveLang(langCode);
+    const dict = I18N[currentLang];
+    document.documentElement.lang = currentLang;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key] !== undefined) el.textContent = dict[key];
+    });
+    document.title = dict.pageTitle;
+    // Строки, которые генерируются в JS, а не лежат в разметке — обновляем отдельно
+    updateControlModeDesc();
+    renderRecords();
+}
+
+// --- Полноэкранный режим для ПК ---
+// Мобильные клиенты Яндекс Игр разворачивают игру сами, поэтому кнопку/автозапуск
+// полноэкранного режима включаем только для десктопа.
+const isDesktop = !/Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+let ysdk = null;
+
+function requestFullscreen() {
+    if (ysdk && ysdk.screen && ysdk.screen.fullscreen) {
+        ysdk.screen.fullscreen.request();
+    } else if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+    }
+}
+function exitFullscreen() {
+    if (ysdk && ysdk.screen && ysdk.screen.fullscreen) {
+        ysdk.screen.fullscreen.exit();
+    } else if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+    }
+}
+function isFullscreenActive() {
+    if (ysdk && ysdk.screen && ysdk.screen.fullscreen) {
+        return ysdk.screen.fullscreen.status === 'on';
+    }
+    return !!document.fullscreenElement;
+}
+
+// ============================================================
 // 1. ИНИЦИАЛИЗАЦИЯ DOM
 // ============================================================
 const canvas = document.getElementById('gameCanvas');
@@ -655,7 +764,7 @@ function renderRecords() {
     const list = loadTopScores();
     const container = document.getElementById('recordsList');
     if (list.length === 0) {
-        container.innerHTML = '<div class="record-row empty">Пока нет рекордов — сыграйте первую игру!</div>';
+        container.innerHTML = `<div class="record-row empty">${I18N[currentLang].recordsEmpty}</div>`;
         return;
     }
     const medals = ['🥇', '🥈', '🥉', '4', '5'];
@@ -1446,6 +1555,9 @@ function togglePause(forceState) {
 document.getElementById('playBtn').addEventListener('click', () => {
     audio.start();
     audio.sfxClick();
+    // Разворачиваем игру на весь экран для ПК прямо по клику "Играть" — это жест пользователя,
+    // поэтому запрос Fullscreen API браузером не блокируется.
+    if (isDesktop) requestFullscreen();
     newGame();
     showGame();
 });
@@ -1514,9 +1626,10 @@ musicVolume.addEventListener('input', () => {
 const controlModeToggle = document.getElementById('controlModeToggle');
 const controlModeDesc = document.getElementById('controlModeDesc');
 function updateControlModeDesc() {
+    const dict = I18N[currentLang];
     controlModeDesc.textContent = controlMode === 'buttons'
-        ? 'Стрелки и кнопка прыжка внизу экрана'
-        : 'Управление свайпом и удержанием по игровому полю';
+        ? dict.controlDescButtons
+        : dict.controlDescTouch;
 }
 controlModeToggle.checked = controlMode === 'buttons';
 updateControlModeDesc();
@@ -1655,6 +1768,35 @@ bindHold(document.getElementById('jumpBtn'), () => game && game.keyDown('jump'),
 // ============================================================
 // 7. ЗАПУСК
 // ============================================================
+
+// --- Кнопка "На весь экран" (только для ПК) ---
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+if (isDesktop) {
+    fullscreenBtn.classList.remove('hidden');
+    fullscreenBtn.addEventListener('click', () => {
+        audio.sfxClick();
+        if (isFullscreenActive()) exitFullscreen(); else requestFullscreen();
+    });
+}
+
+// --- Инициализация Yandex Games SDK ---
+if (window.YaGames) {
+    YaGames.init().then((sdk) => {
+        ysdk = sdk;
+        window.ysdk = ysdk;
+        // Автоопределение языка пользователя через SDK — обязательное требование модерации
+        applyLanguage(ysdk.environment.i18n.lang);
+        // Сообщаем платформе, что игра загрузилась и готова к показу
+        ysdk.features.LoadingAPI.ready();
+    }).catch((err) => {
+        console.warn('Yandex Games SDK init failed:', err);
+        applyLanguage((navigator.language || 'ru').slice(0, 2));
+    });
+} else {
+    // Запуск вне Яндекс Игр (локальная проверка в браузере) — используем язык браузера
+    applyLanguage((navigator.language || 'ru').slice(0, 2));
+}
+
 showMenu();
 requestAnimationFrame(gameLoop);
 </script>
