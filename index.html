@@ -175,6 +175,12 @@
     .btn.secondary { background: #2a2a4a; box-shadow: 0 4px 0 #14142a; }
     .btn.secondary:active { box-shadow: none; }
     .btn.small { padding: 9px 18px; font-size: 14px; }
+    .btn.revive {
+        background: linear-gradient(135deg, #ffd166, #ff9f4a);
+        color: #2a1a00;
+        box-shadow: 0 4px 0 #b8842e;
+    }
+    .btn.revive:active { box-shadow: none; }
 
     /* ---------- Menu / Settings full screens ---------- */
     .screen {
@@ -463,6 +469,7 @@
             <p><span data-i18n="scoreLabel">Счёт:</span> <span class="accent" id="finalScore">0</span></p>
             <p><span data-i18n="recordLabel">Рекорд:</span> <span class="accent" id="finalRecord">0</span></p>
             <div class="stack-btns">
+                <button class="btn revive hidden" id="reviveBtn" data-i18n="reviveBtn">📺 ВОСКРЕСНУТЬ</button>
                 <button class="btn" id="restartBtn" data-i18n="restartBtn">↻ ИГРАТЬ СНОВА</button>
                 <button class="btn secondary" id="gameOverMenuBtn" data-i18n="menuBtn">🏠 В МЕНЮ</button>
             </div>
@@ -614,6 +621,14 @@ class AudioManager {
         localStorage.setItem('bd_musicVolume', v);
         if (this.musicGain && this.musicEnabled) this.musicGain.gain.value = v;
     }
+    // Полностью глушит вывод звука (сворачивание вкладки/приложения) — таймер музыкального
+    // цикла продолжает тикать в фоне (это нормально для setTimeout), но раз сам AudioContext
+    // приостановлен, звук физически не проигрывается, пока страница не станет активной снова.
+    suspend() {
+        if (this.ctx && this.ctx.state === 'running') {
+            try { this.ctx.suspend(); } catch (e) {}
+        }
+    }
 }
 const audio = new AudioManager();
 
@@ -644,6 +659,7 @@ const I18N = {
         recordLabel: 'Рекорд:',
         restartBtn: '↻ ИГРАТЬ СНОВА',
         jumpBtn: 'ПРЫЖОК',
+        reviveBtn: '📺 ВОСКРЕСНУТЬ',
     },
     en: {
         pageTitle: 'Builder — Endless Run',
@@ -668,6 +684,7 @@ const I18N = {
         recordLabel: 'Best:',
         restartBtn: '↻ PLAY AGAIN',
         jumpBtn: 'JUMP',
+        reviveBtn: '📺 REVIVE',
     },
 };
 
@@ -699,6 +716,16 @@ function applyLanguage(langCode) {
 // полноэкранного режима включаем только для десктопа.
 const isDesktop = window.__isDesktop;
 let ysdk = null;
+
+// Сообщают платформе Яндекс Игр, идёт ли сейчас активный игровой процесс — используется для
+// статистики удержания игроков. Безопасны для вызова, даже если SDK не подключен (например,
+// при локальном тестировании файла вне Яндекс Игр).
+function ysdkGameplayStart() {
+    try { ysdk && ysdk.features && ysdk.features.GameplayAPI && ysdk.features.GameplayAPI.start(); } catch (e) {}
+}
+function ysdkGameplayStop() {
+    try { ysdk && ysdk.features && ysdk.features.GameplayAPI && ysdk.features.GameplayAPI.stop(); } catch (e) {}
+}
 
 function requestFullscreen() {
     if (ysdk && ysdk.screen && ysdk.screen.fullscreen) {
@@ -842,6 +869,8 @@ class Game {
         this.pushCooldown = 0;   // не даёт толкать коробку на "полшага"; толчок — всегда целый слот
         this.keys = { left: false, right: false };
         this.shake = 0;
+        this.reviveUsed = false;  // воскрешение за рекламу — не больше одного раза за забег
+        this.invulnFrames = 0;    // окно неуязвимости сразу после воскрешения
 
         // --- Краны: каждый несёт ровно один блок, делает один проезд, сбрасывает
         //     блок один раз, уезжает за экран и возвращается с новым блоком ---
@@ -1077,6 +1106,7 @@ class Game {
     update() {
         if (this.gameOver || this.paused) return;
         this.time += 1/60;
+        if (this.invulnFrames > 0) this.invulnFrames--;
 
         // 1. Движение игрока
         const accel = 0.5, maxSpeed = 3.8;
@@ -1182,7 +1212,7 @@ class Game {
             // Коробка, толкнутая самим игроком (pushedFall), никогда не считается столкновением —
             // физически она падает вбок/вниз от места толчка, а не сверху на персонажа, значит
             // не может ни убить его, ни "разбиться от удара головой".
-            if (!c.pushedFall) {
+            if (!c.pushedFall && this.invulnFrames <= 0) {
                 const overlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
                 // Убивать (или разбиваться от удара головой) коробка должна, только если она
                 // реально падает НАД головой персонажа, а не просто пересекается с телом на
@@ -1235,7 +1265,7 @@ class Game {
                 // Финальная страховка: даже если проверка удара выше почему-то не сработала,
                 // кубик не должен молча "лечь" туда, где прямо сейчас физически стоит игрок —
                 // если в момент приземления есть пересечение с игроком по X и Y, это тоже удар.
-                if (!c.pushedFall && !this.gameOver) {
+                if (!c.pushedFall && !this.gameOver && this.invulnFrames <= 0) {
                     const landOverlapX = this.player.x < c.x + c.w - 3 && this.player.x + this.player.w > c.x + 3;
                     const landOverlapY = this.player.y < surfaceY && this.player.y + this.player.h > c.y + 3;
                     if (landOverlapX && landOverlapY) {
@@ -1475,7 +1505,12 @@ class Game {
         }
         ctx.globalAlpha = 1;
 
+        // Мигание персонажа во время короткой неуязвимости после воскрешения
+        if (this.invulnFrames > 0 && Math.floor(this.invulnFrames / 6) % 2 === 0) {
+            ctx.globalAlpha = 0.35;
+        }
         this.drawPlayer();
+        ctx.globalAlpha = 1;
 
         ctx.fillStyle = '#ffffffcc';
         ctx.font = 'bold 12px "Courier New"';
@@ -1525,6 +1560,21 @@ class Game {
         finalRecordSpan.textContent = record;
         recordSpan.textContent = record;
         gameOverlay.classList.remove('hidden');
+        // Кнопка воскрешения доступна не больше одного раза за забег.
+        document.getElementById('reviveBtn').classList.toggle('hidden', this.reviveUsed);
+        ysdkGameplayStop();
+    }
+
+    // Воскрешение за просмотр рекламы: игра продолжается с того же места — поле, счёт,
+    // положение персонажа и краны остаются как есть, ничего не сбрасывается.
+    revive() {
+        this.reviveUsed = true;
+        this.gameOver = false;
+        this.invulnFrames = 90; // ~1.5с неуязвимости, чтобы успеть отойти от опасности
+        this.player.vy = -3;    // небольшой отскок вверх — заметно, что персонаж "восстал"
+        gameOverlay.classList.add('hidden');
+        updateUI();
+        ysdkGameplayStart();
     }
 }
 
@@ -1622,6 +1672,7 @@ function togglePause(forceState) {
     const next = forceState !== undefined ? forceState : !game.paused;
     game.paused = next;
     pauseOverlay.classList.toggle('hidden', !next);
+    if (next) ysdkGameplayStop(); else ysdkGameplayStart();
 }
 
 // ============================================================
@@ -1635,6 +1686,7 @@ document.getElementById('playBtn').addEventListener('click', () => {
     if (isDesktop) requestFullscreen();
     newGame();
     showGame();
+    ysdkGameplayStart();
 });
 document.getElementById('settingsBtn').addEventListener('click', () => {
     audio.start(); audio.sfxClick();
@@ -1649,9 +1701,36 @@ document.getElementById('backBtn').addEventListener('click', () => { audio.sfxCl
 document.getElementById('pauseSettingsBtn').addEventListener('click', () => { audio.sfxClick(); showSettings('pause'); });
 document.getElementById('pauseBtn').addEventListener('click', () => { audio.sfxClick(); togglePause(true); });
 document.getElementById('resumeBtn').addEventListener('click', () => { audio.sfxClick(); togglePause(false); });
-document.getElementById('pauseMenuBtn').addEventListener('click', () => { audio.sfxClick(); togglePause(false); showMenu(); });
-document.getElementById('restartBtn').addEventListener('click', () => { audio.sfxClick(); newGame(); });
+document.getElementById('pauseMenuBtn').addEventListener('click', () => { audio.sfxClick(); togglePause(false); showMenu(); ysdkGameplayStop(); });
+document.getElementById('restartBtn').addEventListener('click', () => { audio.sfxClick(); newGame(); ysdkGameplayStart(); });
 document.getElementById('gameOverMenuBtn').addEventListener('click', () => { audio.sfxClick(); showMenu(); });
+document.getElementById('reviveBtn').addEventListener('click', () => {
+    audio.sfxClick();
+    if (!game || game.reviveUsed) return;
+    if (ysdk && ysdk.adv && ysdk.adv.showRewardedVideo) {
+        ysdk.adv.showRewardedVideo({
+            callbacks: {
+                onRewarded: () => { if (game) game.revive(); },
+                onError: (e) => { console.warn('Rewarded ad error:', e); },
+            },
+        });
+    } else {
+        // SDK недоступен (например, локальное тестирование вне Яндекс Игр) — воскрешаем сразу,
+        // чтобы механику можно было проверить без реальной рекламы.
+        game.revive();
+    }
+});
+
+// Сворачивание вкладки/приложения или переключение на другую вкладку: глушим звук и ставим
+// игру на паузу, чтобы ни музыка, ни эффекты не звучали в фоне, пока страница не активна.
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        audio.suspend();
+        if (game && !game.gameOver && !game.paused) togglePause(true);
+    }
+});
+window.addEventListener('blur', () => audio.suspend());
+window.addEventListener('pagehide', () => audio.suspend());
 
 const soundToggle = document.getElementById('soundToggle');
 const musicToggle = document.getElementById('musicToggle');
