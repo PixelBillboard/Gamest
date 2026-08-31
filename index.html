@@ -797,7 +797,8 @@ function applyControlMode() {
     }
 }
 
-// --- Топ-5 рекордов (хранится локально в браузере) ---
+// --- Топ-5 рекордов и настройки: локально в браузере (localStorage) + синхронизация между
+//     устройствами через ysdk.getPlayer(), когда игра запущена на платформе Яндекс Игр. ---
 function loadTopScores() {
     try {
         const raw = localStorage.getItem('builderTopScores');
@@ -814,7 +815,43 @@ function addScoreToTop(score) {
     list.sort((a, b) => b.score - a.score);
     const top5 = list.slice(0, 5);
     saveTopScores(top5);
+    ysdkPushPlayerData();
     return top5;
+}
+
+let ysdkPlayer = null; // объект игрока Яндекс Игр — доступен только внутри платформы
+
+// Загружает сохранённые на сервере Яндекса данные (если игрок уже играл на другом
+// устройстве) и аккуратно объединяет их с тем, что уже есть локально на этом устройстве.
+function ysdkSyncFromPlayer() {
+    if (!ysdkPlayer) return;
+    ysdkPlayer.getData(['topScores', 'settings']).then((data) => {
+        if (data && Array.isArray(data.topScores) && data.topScores.length > 0) {
+            const merged = loadTopScores().concat(data.topScores);
+            merged.sort((a, b) => b.score - a.score);
+            saveTopScores(merged.slice(0, 5));
+            record = (loadTopScores()[0] && loadTopScores()[0].score) || 0;
+            recordSpan.textContent = record;
+        }
+    }).catch(() => {});
+}
+
+// Отправляет текущий прогресс и настройки на сервер Яндекса, чтобы они не терялись при
+// смене устройства/браузера. Безопасно вызывать и без доступного SDK — просто ничего не делает.
+function ysdkPushPlayerData() {
+    if (!ysdkPlayer) return;
+    try {
+        ysdkPlayer.setData({
+            topScores: loadTopScores(),
+            settings: {
+                soundEnabled: audio.soundEnabled,
+                musicEnabled: audio.musicEnabled,
+                soundVolume: audio.soundVolume,
+                musicVolume: audio.musicVolume,
+                controlMode: controlMode,
+            },
+        }, true);
+    } catch (e) {}
 }
 function renderRecords() {
     const list = loadTopScores();
@@ -1708,10 +1745,14 @@ document.getElementById('reviveBtn').addEventListener('click', () => {
     audio.sfxClick();
     if (!game || game.reviveUsed) return;
     if (ysdk && ysdk.adv && ysdk.adv.showRewardedVideo) {
+        // Требование модерации: звук игры должен паузиться во время показа рекламы —
+        // иначе наша музыка/эффекты звучали бы поверх звука самого рекламного ролика.
+        audio.suspend();
         ysdk.adv.showRewardedVideo({
             callbacks: {
                 onRewarded: () => { if (game) game.revive(); },
-                onError: (e) => { console.warn('Rewarded ad error:', e); },
+                onClose: () => { audio.ensureContext(); }, // возобновляем звук после закрытия рекламы
+                onError: (e) => { console.warn('Rewarded ad error:', e); audio.ensureContext(); },
             },
         });
     } else {
@@ -1731,6 +1772,11 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('blur', () => audio.suspend());
 window.addEventListener('pagehide', () => audio.suspend());
+
+// Требование модерации §1.6: контекстное меню браузера (правый клик / лонг-тап) должно быть
+// отключено внутри игры — иначе на iOS долгое касание игрового поля вызывает системное меню
+// выделения текста поверх канваса.
+document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 const soundToggle = document.getElementById('soundToggle');
 const musicToggle = document.getElementById('musicToggle');
@@ -1759,22 +1805,25 @@ soundToggle.addEventListener('change', () => {
     soundVolume.disabled = !soundToggle.checked;
     if (soundToggle.checked) audio.sfxClick();
     updateMuteLabel(soundLabel, soundVolume, soundToggle);
+    ysdkPushPlayerData();
 });
 musicToggle.addEventListener('change', () => {
     audio.start();
     audio.setMusicEnabled(musicToggle.checked);
     musicVolume.disabled = !musicToggle.checked;
     updateMuteLabel(musicLabel, musicVolume, musicToggle);
+    ysdkPushPlayerData();
 });
 soundVolume.addEventListener('input', () => {
     audio.setSoundVolume(soundVolume.value / 100);
     updateMuteLabel(soundLabel, soundVolume, soundToggle);
 });
-soundVolume.addEventListener('change', () => { audio.sfxClick(); });
+soundVolume.addEventListener('change', () => { audio.sfxClick(); ysdkPushPlayerData(); });
 musicVolume.addEventListener('input', () => {
     audio.setMusicVolume(musicVolume.value / 100);
     updateMuteLabel(musicLabel, musicVolume, musicToggle);
 });
+musicVolume.addEventListener('change', () => { ysdkPushPlayerData(); });
 
 // --- Режим управления: кнопки на экране или сенсор (свайп/удержание) ---
 const controlModeToggle = document.getElementById('controlModeToggle');
@@ -1797,6 +1846,7 @@ controlModeToggle.addEventListener('change', () => {
     if (!gameScreen.classList.contains('hidden') || settingsReturnTo === 'pause') {
         applyControlMode();
     }
+    ysdkPushPlayerData();
 });
 
 // ============================================================
@@ -1932,6 +1982,11 @@ if (window.YaGames) {
         applyLanguage(ysdk.environment.i18n.lang);
         // Сообщаем платформе, что игра загрузилась и готова к показу
         ysdk.features.LoadingAPI.ready();
+        // Прогресс и настройки сохраняются между сессиями и устройствами через игрока Яндекса
+        sdk.getPlayer({ scopes: false }).then((player) => {
+            ysdkPlayer = player;
+            ysdkSyncFromPlayer();
+        }).catch(() => {});
     }).catch((err) => {
         console.warn('Yandex Games SDK init failed:', err);
         applyLanguage((navigator.language || 'ru').slice(0, 2));
